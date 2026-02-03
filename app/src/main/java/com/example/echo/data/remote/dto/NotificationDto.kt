@@ -7,14 +7,13 @@ import kotlinx.serialization.Serializable
 data class NotificationDto(
     val id: String,
     @SerialName("echo_id") val echoId: String,
-    val content: String, // The Reply content
-    @SerialName("created_at") val createdAt: String,
-
-    // Nested object from the "Join" query
-    val echoes: EchoSummaryDto? = null
+    val content: String,
+    @SerialName("created_at") val createdAt: String, // Ensure this matches Supabase JSON
+    @SerialName("echoes") val echo: ParentEchoDto? = null
 )
 
 @Serializable
-data class EchoSummaryDto(
-    val content: String // The Original Echo content
+data class ParentEchoDto(
+    val content: String,
+    @SerialName("signature_id") val signatureId: String
 )

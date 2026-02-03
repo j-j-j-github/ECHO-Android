@@ -5,18 +5,17 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.serialization)
-    // DELETED: kotlin("plugin.serialization") version "1.9.0" (Duplicate)
-}
+    id("com.google.gms.google-services")}
 
 android {
     namespace = "com.example.echo"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.echo"
+        applicationId = "com.j3labs.echo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 3
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -84,6 +83,19 @@ dependencies {
 
     // Image Loading
     implementation(libs.coil.compose)
+
+    // --- FIREBASE SETUP (CORRECTED SYNTAX) ---
+    // Import the Firebase BoM
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+
+    // Add Firebase Analytics
+    implementation("com.google.firebase:firebase-analytics")
+
+    // Add Firebase Cloud Messaging
+    implementation("com.google.firebase:firebase-messaging")
+
+    // Add Firestore
+    implementation("com.google.firebase:firebase-firestore")
 
     // DI (Hilt)
     implementation(libs.hilt.android)

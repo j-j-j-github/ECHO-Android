@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
 import com.example.echo.data.remote.dto.NotificationDto
 
-// FIX: Added color definitions if missing
 val Stone600 = Color(0xFF57534E)
 val Stone700 = Color(0xFF44403C)
 
@@ -97,8 +96,8 @@ fun NotificationPanel(
                     contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(notifications) { item ->
-                        // NEW: Wrap item in FadeIn logic
+                    // FIX: Added 'key = { it.id }' for 120Hz smooth scrolling
+                    items(items = notifications, key = { it.id }) { item ->
                         FadeInItem {
                             NotificationItem(item = item, onClick = { onNotificationClick(item.echoId) })
                         }
@@ -124,7 +123,8 @@ fun NotificationItem(
             .padding(16.dp)
     ) {
         // 1. Context (Original Echo)
-        val originalText = item.echoes?.content ?: "Unknown Echo"
+        val originalText = item.echo?.content ?: "Unknown Echo"
+
         Text(
             text = "REPLY: ${originalText.take(25).uppercase()}",
             style = VoidTypography.labelSmall.copy(
@@ -162,7 +162,6 @@ fun NotificationItem(
     }
 }
 
-// --- HELPER: Simple Fade In Animation Wrapper ---
 @Composable
 fun FadeInItem(content: @Composable () -> Unit) {
     val alpha = remember { Animatable(0f) }
@@ -170,7 +169,7 @@ fun FadeInItem(content: @Composable () -> Unit) {
     LaunchedEffect(Unit) {
         alpha.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 600) // Smooth 600ms fade
+            animationSpec = tween(durationMillis = 600)
         )
     }
 

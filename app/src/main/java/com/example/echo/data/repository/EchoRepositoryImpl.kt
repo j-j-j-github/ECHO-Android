@@ -1,23 +1,26 @@
 package com.example.echo.data.repository
 
+import android.content.Context
+import android.util.Log
+import com.example.echo.core.utils.SharedPreferencesManager
 import com.example.echo.data.remote.dto.EchoDto
+import com.example.echo.data.remote.dto.NotificationDto
 import com.example.echo.data.remote.dto.ReplyDto
 import com.example.echo.domain.repository.EchoRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
-import javax.inject.Named
-import com.example.echo.data.remote.dto.NotificationDto
 
 class EchoRepositoryImpl @Inject constructor(
     private val supabase: SupabaseClient,
-    // INJECT THE PERSISTENT ID HERE
-    @Named("DeviceSignature") private val deviceSignature: String
+    @ApplicationContext private val context: Context
 ) : EchoRepository {
 
     override fun getEchoes(): Flow<List<EchoDto>> = flow {
@@ -39,8 +42,7 @@ class EchoRepositoryImpl @Inject constructor(
             val echo = EchoDto(
                 id = UUID.randomUUID().toString(),
                 content = content,
-                // Uses the PERSISTENT signature now
-                signatureId = deviceSignature
+                signatureId = SharedPreferencesManager.getInstallationId(context)
             )
             supabase.postgrest["echoes"].insert(echo)
         } catch (e: Exception) { e.printStackTrace() }
@@ -60,21 +62,56 @@ class EchoRepositoryImpl @Inject constructor(
         try {
             val report = mapOf(
                 "echo_id" to echoId,
-                "signature" to deviceSignature // Uses persistent ID for reports
+                "signature" to SharedPreferencesManager.getInstallationId(context)
             )
             supabase.postgrest["reports"].insert(report)
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // 1. Fetch Notifications (Replies to MY echoes)
-    suspend fun getUserNotifications(): List<NotificationDto> {
+    // --- FIXED QUERY ---
+    override suspend fun hasUnreadNotifications(): Boolean {
         return try {
+            val mySignature = SharedPreferencesManager.getInstallationId(context)
+            val lastCheckedString = SharedPreferencesManager.getLastCheckedTime(context)
+
+            // FIX: We must select ALL fields required by NotificationDto
+            // id, echo_id, content, created_at, AND echoes(content, signature_id)
+            val latestNotification = supabase.postgrest["replies"]
+                .select(columns = Columns.list("id", "echo_id", "content", "created_at", "echoes!inner(content, signature_id)")) {
+                    filter { eq("echoes.signature_id", mySignature) }
+                    order("created_at", order = Order.DESCENDING)
+                    limit(1)
+                }.decodeSingleOrNull<NotificationDto>()
+
+            if (latestNotification == null) {
+                return false
+            }
+
+            if (lastCheckedString.isEmpty()) return true
+
+            // Safe Time Comparison
+            val latestTime = Instant.parse(latestNotification.createdAt)
+            val lastCheckedTime = Instant.parse(lastCheckedString)
+
+            return latestTime.isAfter(lastCheckedTime)
+
+        } catch (e: Exception) {
+            Log.e("EchoGlow", "Error calculating glow: ${e.message}")
+            false
+        }
+    }
+
+    override fun markNotificationsAsRead() {
+        val now = Instant.now().toString()
+        SharedPreferencesManager.saveLastCheckedTime(context, now)
+    }
+
+    override suspend fun getUserNotifications(): List<NotificationDto> {
+        return try {
+            val mySignature = SharedPreferencesManager.getInstallationId(context)
             supabase.postgrest["replies"]
                 .select(columns = Columns.list("id", "echo_id", "content", "created_at", "echoes!inner(content, signature_id)")) {
-                    // FILTER: Only where the parent Echo's signature matches MY device
-                    filter {
-                        eq("echoes.signature_id", deviceSignature)
-                    }
+                    filter { eq("echoes.signature_id", mySignature) }
                     order("created_at", order = Order.DESCENDING)
                     limit(20)
                 }.decodeList<NotificationDto>()
@@ -84,8 +121,7 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
-    // 2. Fetch Single Echo (For navigation)
-    suspend fun getEchoById(echoId: String): EchoDto? {
+    override suspend fun getEchoById(echoId: String): EchoDto? {
         return try {
             supabase.postgrest["echoes"]
                 .select(columns = Columns.list("*", "replies(*)")) {

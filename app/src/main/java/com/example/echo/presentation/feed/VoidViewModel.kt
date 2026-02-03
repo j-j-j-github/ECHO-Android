@@ -24,7 +24,7 @@ import kotlin.random.Random
 @HiltViewModel
 class VoidViewModel @Inject constructor(
     private val repository: EchoRepositoryImpl,
-    @ApplicationContext private val context: Context // NEW: Inject Context for SharedPreferences
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     // 1. DATA: Echoes
@@ -48,19 +48,72 @@ class VoidViewModel @Inject constructor(
     private val _isNotificationPanelOpen = MutableStateFlow(false)
     val isNotificationPanelOpen: StateFlow<Boolean> = _isNotificationPanelOpen.asStateFlow()
 
-    // 5. UI STATE: Get Started Pop-up (NEW)
+    // --- UNREAD INDICATOR STATE ---
+    private val _hasUnread = MutableStateFlow(false)
+    val hasUnread: StateFlow<Boolean> = _hasUnread.asStateFlow()
+
+    // 5. UI STATE: Get Started Pop-up
     private val _showGetStarted = MutableStateFlow(false)
     val showGetStarted: StateFlow<Boolean> = _showGetStarted.asStateFlow()
+
+    // --- NEW: DEEP LINK STATE ---
+    // The UI observes this. If it's not null, it opens the Detail Overlay immediately.
+    private val _deepLinkEcho = MutableStateFlow<EchoDto?>(null)
+    val deepLinkEcho: StateFlow<EchoDto?> = _deepLinkEcho.asStateFlow()
 
     init {
         // Check if this is the first launch
         _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
 
-        loadEchoes()
+        loadFeed()
         startSoulSimulation()
     }
 
-    // --- GET STARTED ACTIONS (NEW) ---
+    // --- NEW: DEEP LINK HANDLER ---
+    // Called by MainActivity when intent contains "DEEP_LINK_ECHO_ID"
+    fun handleDeepLink(echoId: String) {
+        viewModelScope.launch {
+            // Wait slightly if feed hasn't loaded yet (optional safety)
+            if (_echoes.value.isEmpty()) {
+                delay(500)
+            }
+
+            // Re-use open logic, but instead of panel, we set the specific deep link state
+            val echo = repository.getEchoById(echoId)
+            if (echo != null) {
+                _deepLinkEcho.value = echo
+            }
+        }
+    }
+
+    // Called by UI after it opens the echo, to prevent re-opening on rotation
+    fun consumeDeepLink() {
+        _deepLinkEcho.value = null
+    }
+
+    // --- PUBLIC RELOAD FUNCTION (For Auto-Refresh) ---
+    // Called by the UI (LaunchedEffect) every time the screen appears
+    fun loadFeed() {
+        viewModelScope.launch {
+            // Load content
+            repository.getEchoes().collect { list ->
+                _echoes.value = list
+                _activeCount.value = list.size
+                updateCount()
+            }
+            // Check bell status in parallel
+            checkNotificationStatus()
+        }
+    }
+
+    // --- REALTIME TRIGGER ---
+    // Called instantly when the Broadcast Receiver hears "NEW_NOTIFICATION"
+    // This turns the glow ON immediately without a database call.
+    fun onRealtimeNotificationReceived() {
+        _hasUnread.value = true
+    }
+
+    // --- GET STARTED ACTIONS ---
 
     fun markGetStartedSeen() {
         SharedPreferencesManager.setFirstLaunchComplete(context)
@@ -71,23 +124,24 @@ class VoidViewModel @Inject constructor(
         _showGetStarted.value = true
     }
 
-    private fun loadEchoes() {
+    // --- NOTIFICATION ACTIONS ---
+
+    // Check repository for unread status (Standard polling/check)
+    private fun checkNotificationStatus() {
         viewModelScope.launch {
-            repository.getEchoes().collect { list ->
-                _echoes.value = list
-                _activeCount.value = list.size
-                updateCount()
-            }
+            _hasUnread.value = repository.hasUnreadNotifications()
         }
     }
-
-    // --- NOTIFICATION ACTIONS ---
 
     fun toggleNotificationPanel() {
         val current = _isNotificationPanelOpen.value
         if (!current) {
-            // If opening, fetch fresh notifications
+            // OPENING: Fetch fresh notifications
             loadNotifications()
+
+            // Mark as read in Repo and UI immediately
+            repository.markNotificationsAsRead()
+            _hasUnread.value = false
         }
         _isNotificationPanelOpen.value = !current
     }
@@ -105,11 +159,10 @@ class VoidViewModel @Inject constructor(
 
     fun openEchoFromNotification(echoId: String, onLoaded: (EchoDto) -> Unit) {
         viewModelScope.launch {
-            // Fetch the specific echo to open in detail view
             val echo = repository.getEchoById(echoId)
             if (echo != null) {
                 onLoaded(echo)
-                _isNotificationPanelOpen.value = false // Close panel automatically
+                _isNotificationPanelOpen.value = false
             }
         }
     }
@@ -126,6 +179,8 @@ class VoidViewModel @Inject constructor(
                 updateCount()
                 _isRefreshing.value = false
             }
+            // Also re-check notifications on pull-to-refresh
+            checkNotificationStatus()
         }
     }
 
@@ -152,15 +207,18 @@ class VoidViewModel @Inject constructor(
         viewModelScope.launch {
             repository.createEcho(content)
             delay(500)
-            loadEchoes()
+            loadFeed() // Auto-refresh after posting
         }
     }
 
+    // --- UPDATED: REFRESHES FEED INSTANTLY AFTER REPLY ---
     fun postReply(echoId: String, content: String) {
         viewModelScope.launch {
             repository.createReply(echoId, content)
-            delay(500)
-            loadEchoes()
+
+            // Immediately reload the feed.
+            // Since DetailOverlay observes 'echoes', it will see the new comment instantly.
+            loadFeed()
         }
     }
 

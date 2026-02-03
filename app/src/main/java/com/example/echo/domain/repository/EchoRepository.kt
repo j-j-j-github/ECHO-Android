@@ -1,13 +1,25 @@
 package com.example.echo.domain.repository
 
 import com.example.echo.data.remote.dto.EchoDto
+import com.example.echo.data.remote.dto.NotificationDto
 import kotlinx.coroutines.flow.Flow
 
 interface EchoRepository {
+
     fun getEchoes(): Flow<List<EchoDto>>
+
     suspend fun createEcho(content: String)
 
-    // NEW: Add these two lines so the Impl can override them
     suspend fun createReply(echoId: String, content: String)
+
     suspend fun reportEcho(echoId: String)
+
+    suspend fun getUserNotifications(): List<NotificationDto>
+
+    suspend fun getEchoById(echoId: String): EchoDto?
+
+    // --- ADD THESE TWO MISSING METHODS ---
+    suspend fun hasUnreadNotifications(): Boolean
+
+    fun markNotificationsAsRead()
 }
