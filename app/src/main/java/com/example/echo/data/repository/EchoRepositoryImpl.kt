@@ -30,6 +30,9 @@ class EchoRepositoryImpl @Inject constructor(
                     order("created_at", order = Order.DESCENDING)
                     limit(50)
                 }.decodeList<EchoDto>()
+                .map { echo ->
+                    echo.copy(replies = echo.replies?.sortedBy { it.createdAt })
+                }
             emit(results)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -50,11 +53,16 @@ class EchoRepositoryImpl @Inject constructor(
 
     override suspend fun createReply(echoId: String, content: String) {
         try {
-            val reply = ReplyDto(
-                echoId = echoId,
-                content = content
+            // 1. Send to Server (Safe Map method to avoid column errors)
+            val replyMap = mapOf(
+                "echo_id" to echoId,
+                "content" to content
             )
-            supabase.postgrest["replies"].insert(reply)
+            supabase.postgrest["replies"].insert(replyMap)
+
+            // 2. THIS IS THE MISSING LINK: Save to Local Memory immediately!
+            SharedPreferencesManager.saveRepliedEcho(context, echoId)
+
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -68,14 +76,11 @@ class EchoRepositoryImpl @Inject constructor(
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // --- FIXED QUERY ---
     override suspend fun hasUnreadNotifications(): Boolean {
         return try {
             val mySignature = SharedPreferencesManager.getInstallationId(context)
             val lastCheckedString = SharedPreferencesManager.getLastCheckedTime(context)
 
-            // FIX: We must select ALL fields required by NotificationDto
-            // id, echo_id, content, created_at, AND echoes(content, signature_id)
             val latestNotification = supabase.postgrest["replies"]
                 .select(columns = Columns.list("id", "echo_id", "content", "created_at", "echoes!inner(content, signature_id)")) {
                     filter { eq("echoes.signature_id", mySignature) }
@@ -89,7 +94,6 @@ class EchoRepositoryImpl @Inject constructor(
 
             if (lastCheckedString.isEmpty()) return true
 
-            // Safe Time Comparison
             val latestTime = Instant.parse(latestNotification.createdAt)
             val lastCheckedTime = Instant.parse(lastCheckedString)
 
@@ -123,10 +127,13 @@ class EchoRepositoryImpl @Inject constructor(
 
     override suspend fun getEchoById(echoId: String): EchoDto? {
         return try {
-            supabase.postgrest["echoes"]
+            val echo = supabase.postgrest["echoes"]
                 .select(columns = Columns.list("*", "replies(*)")) {
                     filter { eq("id", echoId) }
                 }.decodeSingleOrNull<EchoDto>()
+
+            echo?.copy(replies = echo.replies?.sortedBy { it.createdAt })
+
         } catch (e: Exception) {
             e.printStackTrace()
             null

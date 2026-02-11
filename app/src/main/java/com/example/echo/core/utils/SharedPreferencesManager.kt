@@ -11,8 +11,10 @@ object SharedPreferencesManager {
     // Notification tracking
     private const val KEY_LAST_ECHO_ID = "last_seen_echo_id"
     private const val KEY_LAST_REPLY_COUNT = "last_reply_count"
-    // --- NEW KEY FOR GLOWING BELL ---
     private const val KEY_LAST_CHECKED_TIME = "last_notification_checked_time"
+
+    // --- NEW: REPLIED ECHOES TRACKING ---
+    private const val KEY_REPLIED_ECHOES = "replied_echoes_set"
 
     private fun getPrefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -28,15 +30,31 @@ object SharedPreferencesManager {
         return id!!
     }
 
-    // --- NOTIFICATION TIMESTAMPS (NEW) ---
-    // Saves the timestamp of when we last opened the notifications
+    // --- NOTIFICATION TIMESTAMPS ---
     fun saveLastCheckedTime(context: Context, timestamp: String) {
         getPrefs(context).edit().putString(KEY_LAST_CHECKED_TIME, timestamp).apply()
     }
 
-    // Returns the saved timestamp (default to empty string if never checked)
     fun getLastCheckedTime(context: Context): String {
         return getPrefs(context).getString(KEY_LAST_CHECKED_TIME, "") ?: ""
+    }
+
+    // --- NEW: SAVE REPLIED ECHO ID ---
+    // Called when you successfully send a reply. Saves the Echo ID locally.
+    fun saveRepliedEcho(context: Context, echoId: String) {
+        val prefs = getPrefs(context)
+        val currentSet = prefs.getStringSet(KEY_REPLIED_ECHOES, emptySet()) ?: emptySet()
+        val newSet = currentSet.toMutableSet()
+        newSet.add(echoId)
+        prefs.edit().putStringSet(KEY_REPLIED_ECHOES, newSet).apply()
+    }
+
+    // --- NEW: CHECK IF REPLIED ---
+    // Returns true if your local storage says you replied to this Echo.
+    fun hasRepliedTo(context: Context, echoId: String): Boolean {
+        val prefs = getPrefs(context)
+        val currentSet = prefs.getStringSet(KEY_REPLIED_ECHOES, emptySet()) ?: emptySet()
+        return currentSet.contains(echoId)
     }
 
     // --- EXISTING METHODS ---

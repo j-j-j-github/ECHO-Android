@@ -148,7 +148,7 @@ fun VoidScreen(
     // Blur Animation
     val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 10.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
 
-    // Dimming Animation (FIXED: Added this back)
+    // Dimming Animation
     val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.6f else 0f, label = "dimAlpha", animationSpec = tween(400))
 
     val isDetailCovered = selectedEchoId != null && echoToReport != null
@@ -227,7 +227,6 @@ fun VoidScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
-                // SMART BLUR: Only apply the modifier if blur > 0.
                 .then(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && homeBlur > 0.dp)
                         Modifier.blur(homeBlur)
@@ -305,8 +304,10 @@ fun VoidScreen(
                             contentType = { "echo" }
                         ) { echo ->
                             EchoCard(
+                                echoId = echo.id ?: "", // <--- FIXED: Safely handle nullable ID
                                 content = echo.content,
                                 createdAt = echo.createdAt,
+                                replies = echo.replies,
                                 onReport = { echoToReport = echo },
                                 onClick = { selectedEchoId = echo.id }
                             )
