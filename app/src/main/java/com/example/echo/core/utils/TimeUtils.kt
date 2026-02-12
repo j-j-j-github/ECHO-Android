@@ -48,4 +48,18 @@ object TimeUtils {
             .replace("", " ") // Add spacing between every char
             .trim()
     }
+
+    // 4. NEW: Check if content is within the 1-hour edit window
+    fun canEdit(createdAt: String?): Boolean {
+        if (createdAt == null) return false
+        return try {
+            val createdInstant = Instant.parse(createdAt)
+            val now = Instant.now()
+            val duration = Duration.between(createdInstant, now)
+            // Edit window is exactly 60 minutes
+            !duration.isNegative && duration.toMinutes() < 60
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

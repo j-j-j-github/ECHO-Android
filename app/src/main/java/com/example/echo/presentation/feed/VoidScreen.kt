@@ -75,6 +75,9 @@ fun VoidScreen(
 
     val deepLinkEcho by viewModel.deepLinkEcho.collectAsStateWithLifecycle()
 
+    var editingEchoId by remember { mutableStateOf<String?>(null) }
+    var editingInitialText by remember { mutableStateOf("") }
+
     // 2. UI STATES
     var showWhisper by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
@@ -101,6 +104,14 @@ fun VoidScreen(
         if (deepLinkEcho != null) {
             selectedEchoId = deepLinkEcho?.id
             viewModel.consumeDeepLink()
+        }
+    }
+
+    // ✅ FAILSAFE 1: Ensures data is wiped immediately when the overlay closes
+    LaunchedEffect(showWhisper) {
+        if (!showWhisper) {
+            editingEchoId = null
+            editingInitialText = ""
         }
     }
 
@@ -304,12 +315,19 @@ fun VoidScreen(
                             contentType = { "echo" }
                         ) { echo ->
                             EchoCard(
-                                echoId = echo.id ?: "", // <--- FIXED: Safely handle nullable ID
+                                echoId = echo.id ?: "",
                                 content = echo.content,
                                 createdAt = echo.createdAt,
+                                updatedAt = echo.updatedAt,
                                 colorCode = echo.colorCode,
+                                signatureId = echo.signatureId,
                                 replies = echo.replies,
                                 onReport = { echoToReport = echo },
+                                onEdit = {
+                                    editingEchoId = echo.id
+                                    editingInitialText = echo.content
+                                    showWhisper = true
+                                },
                                 onClick = { selectedEchoId = echo.id }
                             )
                         }
@@ -335,7 +353,11 @@ fun VoidScreen(
 
             // FAB
             FloatingActionButton(
-                onClick = { showWhisper = true },
+                onClick = {
+                    editingEchoId = null
+                    editingInitialText = ""
+                    showWhisper = true
+                },
                 containerColor = NeonWhite,
                 contentColor = VoidBlack,
                 shape = CircleShape,
@@ -395,13 +417,27 @@ fun VoidScreen(
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier.align(Alignment.TopCenter).zIndex(5f)
         ) {
-            WhisperOverlay(
-                onDismiss = { showWhisper = false },
-                onSend = { text, color -> // <--- UPDATE THESE PARAMETERS
-                    viewModel.postEcho(text, color) // <--- PASS COLOR TO VIEWMODEL
-                    showWhisper = false
-                }
-            )
+            // ✅ FAILSAFE 2: Forcing a total UI recreation when the edit ID changes
+            key(editingEchoId ?: "new_post") {
+                WhisperOverlay(
+                    onDismiss = {
+                        showWhisper = false
+                        editingEchoId = null
+                        editingInitialText = ""
+                    },
+                    initialText = editingInitialText,
+                    onSend = { text, color ->
+                        if (editingEchoId != null) {
+                            viewModel.updateEcho(editingEchoId!!, text)
+                        } else {
+                            viewModel.postEcho(text, color)
+                        }
+                        showWhisper = false
+                        editingEchoId = null
+                        editingInitialText = ""
+                    }
+                )
+            }
         }
 
         // LAYER 3: DETAIL
@@ -433,6 +469,13 @@ fun VoidScreen(
                             viewModel.loadFeed()
                         },
                         onReply = { reply -> cachedEcho!!.id?.let { viewModel.postReply(it, reply) } },
+                        onUpdateReply = { replyId, newContent -> viewModel.updateReply(replyId, newContent) },
+                        onEditEcho = {
+                            selectedEchoId = null
+                            editingEchoId = cachedEcho!!.id
+                            editingInitialText = cachedEcho!!.content
+                            showWhisper = true
+                        },
                         onReport = { echoToReport = cachedEcho }
                     )
                 }

@@ -9,6 +9,6 @@ data class ReplyDto(
     @SerialName("echo_id") val echoId: String,
     val content: String,
     @SerialName("created_at") val createdAt: String? = null,
-    // REMOVED: signatureId (It does not exist in your DB table)
-    @SerialName("signature_id") val signatureId: String? = null
+    @SerialName("signature_id") val signatureId: String? = null, // ✅ Added back for the new column
+    @SerialName("updated_at") val updatedAt: String? = null
 )

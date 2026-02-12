@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.*
@@ -21,12 +22,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType // ✅ Added
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback // ✅ Added
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.core.utils.TimeUtils
+import com.example.echo.core.utils.SharedPreferencesManager
 import kotlinx.coroutines.delay
 
 @Composable
@@ -34,11 +39,18 @@ fun DetailOverlay(
     echo: EchoDto,
     onDismiss: () -> Unit,
     onReply: (String) -> Unit,
+    onUpdateReply: (String, String) -> Unit,
+    onEditEcho: () -> Unit,
     onReport: () -> Unit
 ) {
-    var replyText by remember { mutableStateOf("") }
-    val currentReplies = echo.replies.orEmpty()
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current // ✅ Initialize haptic manager
+    val mySignature = remember { SharedPreferencesManager.getInstallationId(context) }
 
+    var replyText by remember { mutableStateOf("") }
+    var editingReplyId by remember { mutableStateOf<String?>(null) }
+
+    val currentReplies = echo.replies.orEmpty()
     val createdInstant = remember(echo.createdAt) { TimeUtils.parseTime(echo.createdAt) }
     var countdownText by remember { mutableStateOf(TimeUtils.getCountdownString(createdInstant)) }
 
@@ -66,41 +78,53 @@ fun DetailOverlay(
                 .clickable(enabled = false) {}
         ) {
 
-            // --- TOP SECTION (Weight 0.8) ---
+            // --- TOP SECTION ---
             Column(
                 modifier = Modifier
                     .weight(0.8f)
                     .fillMaxWidth()
             ) {
-                // 1. DEDICATED HEADER ROW (Buttons never overlap text)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onReport) {
-                        Icon(Icons.Outlined.Flag, "Report", tint = Stone700)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onReport) {
+                            Icon(Icons.Outlined.Flag, "Report", tint = Stone400)
+                        }
+
+                        val isEchoOwner = echo.signatureId == mySignature
+                        val isEchoEditable = remember(echo.createdAt) { TimeUtils.canEdit(echo.createdAt) }
+                        if (isEchoOwner && isEchoEditable) {
+                            IconButton(onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress) // ✅ Tick on Edit click
+                                onEditEcho()
+                            }) {
+                                Icon(Icons.Default.Edit, "Recast Echo", tint = Stone400, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
+
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, "Close", tint = Stone400)
                     }
                 }
 
-                // 2. SCROLLABLE TEXT AREA
-                // 'Box' ensures centering if short, 'verticalScroll' enables scrolling if long
                 Box(
                     modifier = Modifier
-                        .weight(1f) // Fill remaining space in top section
+                        .weight(1f)
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()) // <--- ENABLE SCROLL
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(vertical = 20.dp) // Add cushion for scrolling
+                        modifier = Modifier.padding(vertical = 20.dp)
                     ) {
                         Text(
                             text = echo.content,
@@ -108,17 +132,25 @@ fun DetailOverlay(
                             color = NeonWhite,
                             textAlign = TextAlign.Center
                         )
-
                         Spacer(modifier = Modifier.height(32.dp))
 
-                        Text(
-                            text = countdownText,
-                            style = VoidTypography.labelSmall.copy(
-                                fontSize = 12.sp,
-                                letterSpacing = 2.sp,
-                                color = Stone700.copy(alpha = 0.6f)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = countdownText,
+                                style = VoidTypography.labelSmall.copy(
+                                    fontSize = 12.sp,
+                                    letterSpacing = 2.sp,
+                                    color = Stone700.copy(alpha = 0.6f)
+                                )
                             )
-                        )
+                            if (echo.updatedAt != null) {
+                                Text(
+                                    text = "(EDITED)",
+                                    style = VoidTypography.labelSmall.copy(fontSize = 9.sp, color = Stone800, letterSpacing = 1.sp),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -150,6 +182,9 @@ fun DetailOverlay(
                         }
                     } else {
                         itemsIndexed(currentReplies) { index, reply ->
+                            val isMyReply = reply.signatureId == mySignature
+                            val isEditable = TimeUtils.canEdit(reply.createdAt)
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -157,15 +192,43 @@ fun DetailOverlay(
                                     .border(1.dp, Stone800.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                                     .padding(16.dp)
                             ) {
-                                Text(
-                                    text = reply.content,
-                                    style = VoidTypography.bodyLarge.copy(fontSize = 14.sp, color = Stone300)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = reply.content,
+                                        style = VoidTypography.bodyLarge.copy(fontSize = 14.sp, color = Stone300),
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    if (isMyReply && isEditable) {
+                                        IconButton(
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress) // ✅ Tick on Edit Resonance
+                                                editingReplyId = reply.id
+                                                replyText = reply.content
+                                            },
+                                            modifier = Modifier.size(20.dp).offset(x = 8.dp, y = (-4).dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, "Edit Resonance", tint = Stone700, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "RESONANCE #${index + 1}",
-                                    style = VoidTypography.labelSmall.copy(fontSize = 8.sp, color = Stone700)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "RESONANCE #${index + 1}",
+                                        style = VoidTypography.labelSmall.copy(fontSize = 8.sp, color = Stone700)
+                                    )
+                                    if (reply.updatedAt != null) {
+                                        Text(
+                                            text = " • EDITED",
+                                            style = VoidTypography.labelSmall.copy(fontSize = 8.sp, color = Stone800)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -188,12 +251,26 @@ fun DetailOverlay(
                         singleLine = true,
                         modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                         decorationBox = { innerTextField ->
-                            if (replyText.isEmpty()) Text("Whisper back...", style = VoidTypography.bodyLarge.copy(color = Stone700, fontSize = 14.sp))
+                            if (replyText.isEmpty()) {
+                                Text(
+                                    text = if (editingReplyId != null) "Edit resonance..." else "Whisper back...",
+                                    style = VoidTypography.bodyLarge.copy(color = Stone700, fontSize = 14.sp)
+                                )
+                            }
                             innerTextField()
                         }
                     )
                     IconButton(onClick = {
-                        if (replyText.isNotBlank()) { onReply(replyText); replyText = "" }
+                        if (replyText.isNotBlank()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress) // ✅ Satisfying thump on resonance send
+                            if (editingReplyId != null) {
+                                onUpdateReply(editingReplyId!!, replyText)
+                                editingReplyId = null
+                            } else {
+                                onReply(replyText)
+                            }
+                            replyText = ""
+                        }
                     }) {
                         Icon(Icons.Default.Send, "Send", tint = if (replyText.isNotEmpty()) NeonWhite else Stone700)
                     }

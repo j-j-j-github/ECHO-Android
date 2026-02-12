@@ -40,31 +40,52 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
-    // UPDATED: Now accepts colorCode to support secret developer tags
     override suspend fun createEcho(content: String, colorCode: String?) {
         try {
             val echo = EchoDto(
                 id = UUID.randomUUID().toString(),
                 content = content,
                 signatureId = SharedPreferencesManager.getInstallationId(context),
-                colorCode = colorCode // Injected the secret color here
+                colorCode = colorCode
             )
             supabase.postgrest["echoes"].insert(echo)
         } catch (e: Exception) { e.printStackTrace() }
     }
 
+    // UPDATED: Now saves signature_id to enable author-only edits
     override suspend fun createReply(echoId: String, content: String) {
         try {
-            // 1. Send to Server (Safe Map method to avoid column errors)
             val replyMap = mapOf(
                 "echo_id" to echoId,
-                "content" to content
+                "content" to content,
+                "signature_id" to SharedPreferencesManager.getInstallationId(context) // ✅ Added
             )
             supabase.postgrest["replies"].insert(replyMap)
 
-            // 2. THIS IS THE MISSING LINK: Save to Local Memory immediately!
             SharedPreferencesManager.saveRepliedEcho(context, echoId)
 
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    // NEW: Implementation for updating Echoes
+    override suspend fun updateEcho(echoId: String, newContent: String) {
+        try {
+            supabase.postgrest["echoes"].update(
+                { set("content", newContent) }
+            ) {
+                filter { eq("id", echoId) }
+            }
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    // NEW: Implementation for updating Resonances
+    override suspend fun updateReply(replyId: String, newContent: String) {
+        try {
+            supabase.postgrest["replies"].update(
+                { set("content", newContent) }
+            ) {
+                filter { eq("id", replyId) }
+            }
         } catch (e: Exception) { e.printStackTrace() }
     }
 

@@ -60,6 +60,9 @@ class VoidViewModel @Inject constructor(
     private val _deepLinkEcho = MutableStateFlow<EchoDto?>(null)
     val deepLinkEcho: StateFlow<EchoDto?> = _deepLinkEcho.asStateFlow()
 
+    // --- NEW: EDIT STATE ---
+    fun getUserId(): String = SharedPreferencesManager.getInstallationId(context)
+
     init {
         _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
         loadFeed()
@@ -188,11 +191,19 @@ class VoidViewModel @Inject constructor(
         _activeSouls.value = (baseCount + timeVariance + dailySalt).coerceAtLeast(3)
     }
 
-    // --- USER ACTIONS (UPDATED FOR COLOR CODES) ---
+    // --- USER ACTIONS ---
     fun postEcho(content: String, colorCode: String? = null) {
         viewModelScope.launch {
-            // Pass the colorCode through to the repository
             repository.createEcho(content, colorCode)
+            delay(500)
+            loadFeed()
+        }
+    }
+
+    // NEW: Update existing Echo
+    fun updateEcho(echoId: String, content: String) {
+        viewModelScope.launch {
+            repository.updateEcho(echoId, content)
             delay(500)
             loadFeed()
         }
@@ -201,6 +212,15 @@ class VoidViewModel @Inject constructor(
     fun postReply(echoId: String, content: String) {
         viewModelScope.launch {
             repository.createReply(echoId, content)
+            loadFeed()
+        }
+    }
+
+    // NEW: Update existing Resonance
+    fun updateReply(replyId: String, content: String) {
+        viewModelScope.launch {
+            repository.updateReply(replyId, content)
+            delay(500)
             loadFeed()
         }
     }

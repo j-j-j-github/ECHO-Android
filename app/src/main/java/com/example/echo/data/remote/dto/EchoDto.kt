@@ -8,7 +8,8 @@ data class EchoDto(
     val id: String? = null,
     val content: String,
     @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null, // ✅ Corrected
     @SerialName("signature_id") val signatureId: String? = null,
-    @SerialName("color_code") val colorCode: String? = null, // ✅ NEW FIELD
+    @SerialName("color_code") val colorCode: String? = null,
     val replies: List<ReplyDto>? = null
 )
