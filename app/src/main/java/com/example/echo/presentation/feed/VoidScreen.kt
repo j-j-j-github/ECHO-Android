@@ -307,6 +307,7 @@ fun VoidScreen(
                                 echoId = echo.id ?: "", // <--- FIXED: Safely handle nullable ID
                                 content = echo.content,
                                 createdAt = echo.createdAt,
+                                colorCode = echo.colorCode,
                                 replies = echo.replies,
                                 onReport = { echoToReport = echo },
                                 onClick = { selectedEchoId = echo.id }
@@ -396,8 +397,8 @@ fun VoidScreen(
         ) {
             WhisperOverlay(
                 onDismiss = { showWhisper = false },
-                onSend = { text ->
-                    viewModel.postEcho(text)
+                onSend = { text, color -> // <--- UPDATE THESE PARAMETERS
+                    viewModel.postEcho(text, color) // <--- PASS COLOR TO VIEWMODEL
                     showWhisper = false
                 }
             )

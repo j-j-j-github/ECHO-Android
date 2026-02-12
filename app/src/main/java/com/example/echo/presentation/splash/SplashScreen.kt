@@ -92,7 +92,7 @@ fun SplashScreen(navController: NavController) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "v1.0.0",
+                    text = "v1.1.0",
                     style = VoidTypography.labelSmall.copy(
                         fontSize = 10.sp,
                         color = Stone600,

@@ -47,7 +47,6 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var supabase: SupabaseClient
 
-    // 1. Inject ViewModel at Activity level to handle Intents (Deep Links)
     private val mainViewModel: VoidViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,7 +106,6 @@ class MainActivity : ComponentActivity() {
                 NavHost(navController = navController, startDestination = "splash_screen") {
                     composable("splash_screen") { SplashScreen(navController) }
                     composable("void_feed") {
-                        // 4. Pass the Activity-scoped ViewModel to the Screen
                         VoidScreen(viewModel = mainViewModel)
                     }
                 }
@@ -123,11 +121,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkDeepLink(intent: Intent?) {
-        // Look for 'echo_id' (This matches what we set in EchoFirebaseMessagingService)
         val echoId = intent?.getStringExtra("echo_id")
 
         if (echoId != null) {
             Log.d("EchoDeepLink", "Found deep link ID: $echoId")
+
+            // ✅ RESET UNREAD COUNT HERE
+            SharedPreferencesManager.clearUnreadReplyCount(this, echoId)
+
             mainViewModel.handleDeepLink(echoId)
         }
     }
@@ -145,7 +146,6 @@ class MainActivity : ComponentActivity() {
 
             display?.let {
                 val modes = it.supportedModes
-                // Find the mode with the highest refresh rate
                 val maxMode = modes.maxByOrNull { mode -> mode.refreshRate }
 
                 maxMode?.let { mode ->

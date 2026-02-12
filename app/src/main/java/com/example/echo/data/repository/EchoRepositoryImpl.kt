@@ -40,12 +40,14 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun createEcho(content: String) {
+    // UPDATED: Now accepts colorCode to support secret developer tags
+    override suspend fun createEcho(content: String, colorCode: String?) {
         try {
             val echo = EchoDto(
                 id = UUID.randomUUID().toString(),
                 content = content,
-                signatureId = SharedPreferencesManager.getInstallationId(context)
+                signatureId = SharedPreferencesManager.getInstallationId(context),
+                colorCode = colorCode // Injected the secret color here
             )
             supabase.postgrest["echoes"].insert(echo)
         } catch (e: Exception) { e.printStackTrace() }

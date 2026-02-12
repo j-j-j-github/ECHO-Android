@@ -29,7 +29,6 @@ import com.example.echo.core.utils.TimeUtils
 import com.example.echo.data.remote.dto.ReplyDto
 import java.time.Duration
 import java.time.Instant
-import kotlinx.coroutines.delay
 
 // Colors
 val VoidRed = Color(0xFFFF453A)
@@ -66,44 +65,54 @@ fun ActiveSoulsChip(count: Int) {
     }
 }
 
-// 2. Updated Echo Card (Real Time Logic + Report + Replied Indicator)
+// 2. Updated Echo Card (Supports Secret Developer Colors)
 @Composable
 fun EchoCard(
     echoId: String,
     content: String,
     createdAt: String?,
     replies: List<ReplyDto>?,
+    colorCode: String? = null, // ✅ NEW: Passed from Supabase
     onReport: () -> Unit,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-
-    // Parse time once
     val timeObj = remember(createdAt) { TimeUtils.parseTime(createdAt) }
 
-    // Logic: Check if I have replied to this specific Echo
     val hasReplied = remember(replies, echoId) {
         val mySig = SharedPreferencesManager.getInstallationId(context)
-
-        // 1. Check Server (Do any replies match my ID?)
         val serverSaysYes = replies?.any { it.signatureId == mySig } == true
-
-        // 2. Check Local Memory (Did I just reply on this phone?)
         val localSaysYes = SharedPreferencesManager.hasRepliedTo(context, echoId)
-
-        // 3. Return true if EITHER is true
         serverSaysYes || localSaysYes
     }
 
-    // Calculate for Blur Logic (Numeric)
+    // --- DYNAMIC STYLING LOGIC ---
+    val isCreatorPost = colorCode == "#FFFFFF"
+
+    val surfaceColor = remember(colorCode) {
+        if (colorCode != null) {
+            // Creator post is solid white, others are tinted glass
+            Color(android.graphics.Color.parseColor(colorCode))
+                .copy(alpha = if (isCreatorPost) 0.95f else 0.15f)
+        } else Stone900.copy(alpha = 0.2f)
+    }
+
+    val borderColor = remember(colorCode) {
+        if (colorCode != null) {
+            Color(android.graphics.Color.parseColor(colorCode)).copy(alpha = 0.6f)
+        } else Stone800.copy(alpha = 0.4f)
+    }
+
+    // Adapt text color so Creator posts are readable (Black on White)
+    val contentTextColor = if (isCreatorPost) VoidBlack else NeonWhite
+    val subTextColor = if (isCreatorPost) VoidBlack.copy(alpha = 0.6f) else NeonWhite.copy(alpha = 0.5f)
+
+    // Visual Effects (Blur & Alpha)
     val hoursLeftNumeric = remember(timeObj) {
         val deathTime = timeObj.plus(Duration.ofHours(48))
         Duration.between(Instant.now(), deathTime).toHours()
     }
-
     val timeLeftString = TimeUtils.getTimeLeftShort(timeObj)
-
-    // Visual Effects
     val alpha = if (hoursLeftNumeric > 12) 1f else (hoursLeftNumeric / 12f).coerceIn(0.5f, 1f)
     val blurRadius = if (hoursLeftNumeric < 12 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         ((12 - hoursLeftNumeric) * 0.2).dp
@@ -116,12 +125,8 @@ fun EchoCard(
             .graphicsLayer { this.alpha = alpha }
             .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
             .clip(RoundedCornerShape(24.dp))
-            .background(Stone900.copy(alpha = 0.2f))
-            .border(
-                1.dp,
-                if (hasReplied) TerminalGreen.copy(alpha = 0.3f) else Stone800.copy(alpha = 0.4f),
-                RoundedCornerShape(24.dp)
-            )
+            .background(surfaceColor) // ✅ Applied secret color
+            .border(1.dp, borderColor, RoundedCornerShape(24.dp)) // ✅ Applied secret border
             .clickable { onClick() }
             .padding(24.dp)
     ) {
@@ -131,7 +136,7 @@ fun EchoCard(
         ) {
             Text(
                 text = content,
-                style = VoidTypography.bodyLarge,
+                style = VoidTypography.bodyLarge.copy(color = contentTextColor), // ✅ Dynamic color
                 maxLines = 5,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -142,13 +147,12 @@ fun EchoCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // REAL TIME DISPLAY & INDICATOR
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (hasReplied) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Replied",
-                            tint = TerminalGreen,
+                            tint = if (isCreatorPost) VoidBlack else TerminalGreen,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -159,14 +163,13 @@ fun EchoCard(
                         style = VoidTypography.labelSmall.copy(
                             color = when {
                                 timeLeftString == "Expired" -> VoidRed
-                                hasReplied -> TerminalGreen
-                                else -> NeonWhite.copy(alpha = 0.5f)
+                                isCreatorPost -> VoidBlack.copy(alpha = 0.7f)
+                                else -> subTextColor
                             }
                         )
                     )
                 }
 
-                // REPORT BUTTON
                 IconButton(
                     onClick = onReport,
                     modifier = Modifier.size(24.dp)
@@ -174,7 +177,7 @@ fun EchoCard(
                     Icon(
                         imageVector = Icons.Outlined.Flag,
                         contentDescription = "Report",
-                        tint = Stone700,
+                        tint = if (isCreatorPost) VoidBlack.copy(alpha = 0.5f) else Stone700,
                         modifier = Modifier.size(16.dp)
                     )
                 }

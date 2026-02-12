@@ -8,11 +8,11 @@ interface EchoRepository {
 
     fun getEchoes(): Flow<List<EchoDto>>
 
-    suspend fun createEcho(content: String)
-
     suspend fun createReply(echoId: String, content: String)
 
     suspend fun reportEcho(echoId: String)
+
+    suspend fun createEcho(content: String, colorCode: String? = null)
 
     suspend fun getUserNotifications(): List<NotificationDto>
 

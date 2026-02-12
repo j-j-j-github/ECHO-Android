@@ -57,28 +57,21 @@ class VoidViewModel @Inject constructor(
     val showGetStarted: StateFlow<Boolean> = _showGetStarted.asStateFlow()
 
     // --- NEW: DEEP LINK STATE ---
-    // The UI observes this. If it's not null, it opens the Detail Overlay immediately.
     private val _deepLinkEcho = MutableStateFlow<EchoDto?>(null)
     val deepLinkEcho: StateFlow<EchoDto?> = _deepLinkEcho.asStateFlow()
 
     init {
-        // Check if this is the first launch
         _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
-
         loadFeed()
         startSoulSimulation()
     }
 
-    // --- NEW: DEEP LINK HANDLER ---
-    // Called by MainActivity when intent contains "DEEP_LINK_ECHO_ID"
+    // --- DEEP LINK HANDLER ---
     fun handleDeepLink(echoId: String) {
         viewModelScope.launch {
-            // Wait slightly if feed hasn't loaded yet (optional safety)
             if (_echoes.value.isEmpty()) {
                 delay(500)
             }
-
-            // Re-use open logic, but instead of panel, we set the specific deep link state
             val echo = repository.getEchoById(echoId)
             if (echo != null) {
                 _deepLinkEcho.value = echo
@@ -86,35 +79,32 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    // Called by UI after it opens the echo, to prevent re-opening on rotation
+    // --- FIX: RESET COUNT ON CONSUME ---
     fun consumeDeepLink() {
+        val echoId = _deepLinkEcho.value?.id
+        if (echoId != null) {
+            SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
+        }
         _deepLinkEcho.value = null
     }
 
-    // --- PUBLIC RELOAD FUNCTION (For Auto-Refresh) ---
-    // Called by the UI (LaunchedEffect) every time the screen appears
+    // --- PUBLIC RELOAD FUNCTION ---
     fun loadFeed() {
         viewModelScope.launch {
-            // Load content
             repository.getEchoes().collect { list ->
                 _echoes.value = list
                 _activeCount.value = list.size
                 updateCount()
             }
-            // Check bell status in parallel
             checkNotificationStatus()
         }
     }
 
-    // --- REALTIME TRIGGER ---
-    // Called instantly when the Broadcast Receiver hears "NEW_NOTIFICATION"
-    // This turns the glow ON immediately without a database call.
     fun onRealtimeNotificationReceived() {
         _hasUnread.value = true
     }
 
     // --- GET STARTED ACTIONS ---
-
     fun markGetStartedSeen() {
         SharedPreferencesManager.setFirstLaunchComplete(context)
         _showGetStarted.value = false
@@ -125,8 +115,6 @@ class VoidViewModel @Inject constructor(
     }
 
     // --- NOTIFICATION ACTIONS ---
-
-    // Check repository for unread status (Standard polling/check)
     private fun checkNotificationStatus() {
         viewModelScope.launch {
             _hasUnread.value = repository.hasUnreadNotifications()
@@ -136,10 +124,7 @@ class VoidViewModel @Inject constructor(
     fun toggleNotificationPanel() {
         val current = _isNotificationPanelOpen.value
         if (!current) {
-            // OPENING: Fetch fresh notifications
             loadNotifications()
-
-            // Mark as read in Repo and UI immediately
             repository.markNotificationsAsRead()
             _hasUnread.value = false
         }
@@ -159,6 +144,8 @@ class VoidViewModel @Inject constructor(
 
     fun openEchoFromNotification(echoId: String, onLoaded: (EchoDto) -> Unit) {
         viewModelScope.launch {
+            SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
+
             val echo = repository.getEchoById(echoId)
             if (echo != null) {
                 onLoaded(echo)
@@ -171,7 +158,7 @@ class VoidViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            delay(1000) // Artificial delay for better UX
+            delay(1000)
 
             repository.getEchoes().collect { list ->
                 _echoes.value = list
@@ -179,7 +166,6 @@ class VoidViewModel @Inject constructor(
                 updateCount()
                 _isRefreshing.value = false
             }
-            // Also re-check notifications on pull-to-refresh
             checkNotificationStatus()
         }
     }
@@ -202,22 +188,19 @@ class VoidViewModel @Inject constructor(
         _activeSouls.value = (baseCount + timeVariance + dailySalt).coerceAtLeast(3)
     }
 
-    // --- USER ACTIONS ---
-    fun postEcho(content: String) {
+    // --- USER ACTIONS (UPDATED FOR COLOR CODES) ---
+    fun postEcho(content: String, colorCode: String? = null) {
         viewModelScope.launch {
-            repository.createEcho(content)
+            // Pass the colorCode through to the repository
+            repository.createEcho(content, colorCode)
             delay(500)
-            loadFeed() // Auto-refresh after posting
+            loadFeed()
         }
     }
 
-    // --- UPDATED: REFRESHES FEED INSTANTLY AFTER REPLY ---
     fun postReply(echoId: String, content: String) {
         viewModelScope.launch {
             repository.createReply(echoId, content)
-
-            // Immediately reload the feed.
-            // Since DetailOverlay observes 'echoes', it will see the new comment instantly.
             loadFeed()
         }
     }
@@ -227,5 +210,9 @@ class VoidViewModel @Inject constructor(
             repository.reportEcho(echoId)
             _echoes.value = _echoes.value.filter { it.id != echoId }
         }
+    }
+
+    fun onEchoClicked(echoId: String) {
+        SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
     }
 }

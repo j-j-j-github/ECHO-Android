@@ -13,8 +13,11 @@ object SharedPreferencesManager {
     private const val KEY_LAST_REPLY_COUNT = "last_reply_count"
     private const val KEY_LAST_CHECKED_TIME = "last_notification_checked_time"
 
-    // --- NEW: REPLIED ECHOES TRACKING ---
+    // --- NEW: REPLIED ECHOES TRACKING (Green Tick) ---
     private const val KEY_REPLIED_ECHOES = "replied_echoes_set"
+
+    // --- NEW: NOTIFICATION GROUPING COUNTS ---
+    private const val PREF_NOTIF_COUNTS = "notif_counts_pref"
 
     private fun getPrefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -39,22 +42,45 @@ object SharedPreferencesManager {
         return getPrefs(context).getString(KEY_LAST_CHECKED_TIME, "") ?: ""
     }
 
-    // --- NEW: SAVE REPLIED ECHO ID ---
-    // Called when you successfully send a reply. Saves the Echo ID locally.
+    // --- REPLIED ECHO ID (Green Tick Logic) ---
     fun saveRepliedEcho(context: Context, echoId: String) {
         val prefs = getPrefs(context)
         val currentSet = prefs.getStringSet(KEY_REPLIED_ECHOES, emptySet()) ?: emptySet()
-        val newSet = currentSet.toMutableSet()
+        val newSet = HashSet(currentSet) // ✅ defensive copy
         newSet.add(echoId)
         prefs.edit().putStringSet(KEY_REPLIED_ECHOES, newSet).apply()
     }
 
-    // --- NEW: CHECK IF REPLIED ---
-    // Returns true if your local storage says you replied to this Echo.
     fun hasRepliedTo(context: Context, echoId: String): Boolean {
         val prefs = getPrefs(context)
         val currentSet = prefs.getStringSet(KEY_REPLIED_ECHOES, emptySet()) ?: emptySet()
         return currentSet.contains(echoId)
+    }
+
+    // --- NOTIFICATION GROUPING LOGIC ---
+
+    fun getUnreadReplyCount(context: Context, echoId: String): Int {
+        val prefs = context.getSharedPreferences(PREF_NOTIF_COUNTS, Context.MODE_PRIVATE)
+        return prefs.getInt(echoId, 0)
+    }
+
+    fun incrementUnreadReplyCount(context: Context, echoId: String): Int {
+        val prefs = context.getSharedPreferences(PREF_NOTIF_COUNTS, Context.MODE_PRIVATE)
+        val current = prefs.getInt(echoId, 0)
+        val newCount = current + 1
+        prefs.edit().putInt(echoId, newCount).apply()
+        return newCount
+    }
+
+    fun clearUnreadReplyCount(context: Context, echoId: String) {
+        val prefs = context.getSharedPreferences(PREF_NOTIF_COUNTS, Context.MODE_PRIVATE)
+        prefs.edit().remove(echoId).apply()
+    }
+
+    // ✅ NEW — reset count explicitly when a new echo is created
+    fun resetUnreadReplyCount(context: Context, echoId: String) {
+        val prefs = context.getSharedPreferences(PREF_NOTIF_COUNTS, Context.MODE_PRIVATE)
+        prefs.edit().putInt(echoId, 0).apply()
     }
 
     // --- EXISTING METHODS ---
