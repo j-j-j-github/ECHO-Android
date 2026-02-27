@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight // ✅ ADDED MISSING IMPORT
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
@@ -77,7 +78,7 @@ fun EchoCard(
     replies: List<ReplyDto>?,
     signatureId: String? = null,
     colorCode: String? = null,
-    category: String? = null, // ✅ NEW: Accepting Category parameter
+    category: String? = null,
     onReport: () -> Unit,
     onEdit: () -> Unit,
     onClick: () -> Unit
@@ -97,24 +98,41 @@ fun EchoCard(
     val isEditable = remember(createdAt) { TimeUtils.canEdit(createdAt) }
     val showEditButton = isOwner && isEditable
 
-    // --- DYNAMIC STYLING LOGIC ---
-    val isCreatorPost = colorCode == "#FFFFFF"
+    // ✅ SUPER USER LOGIC: Based entirely on colorCode since content string stripped the tags
+    val upperColor = colorCode?.uppercase() ?: ""
+    val isCreator = upperColor == "#FFFFFF"
+    val isAlert = upperColor == "#FF453A"
+    val isUpdate = upperColor == "#4ADE80"
+    val isSuperUser = isCreator || isAlert || isUpdate
 
-    val surfaceColor = remember(colorCode) {
+    // ✅ APPLY THE CORRECT OVERRIDE COLOR
+    val cardColor = when {
+        isCreator -> Color(0xFFFFFFFF) // White
+        isAlert -> Color(0xFFFF453A)   // Red
+        isUpdate -> Color(0xFF4ADE80)  // Green
+        colorCode != null -> try { Color(android.graphics.Color.parseColor(colorCode)) } catch (e: Exception) { Color.White }
+        else -> Stone900.copy(alpha = 0.2f)
+    }
+
+    // --- DYNAMIC STYLING LOGIC ---
+    val surfaceColor = if (isSuperUser) {
+        cardColor.copy(alpha = if (isCreator) 0.95f else 0.15f)
+    } else {
         if (colorCode != null) {
-            Color(android.graphics.Color.parseColor(colorCode))
-                .copy(alpha = if (isCreatorPost) 0.95f else 0.15f)
+            Color(android.graphics.Color.parseColor(colorCode)).copy(alpha = 0.15f)
         } else Stone900.copy(alpha = 0.2f)
     }
 
-    val borderColor = remember(colorCode) {
+    val borderColor = if (isSuperUser) {
+        cardColor.copy(alpha = if(isCreator) 1f else 0.6f)
+    } else {
         if (colorCode != null) {
             Color(android.graphics.Color.parseColor(colorCode)).copy(alpha = 0.6f)
         } else Stone800.copy(alpha = 0.4f)
     }
 
-    val contentTextColor = if (isCreatorPost) VoidBlack else NeonWhite
-    val subTextColor = if (isCreatorPost) VoidBlack.copy(alpha = 0.6f) else NeonWhite.copy(alpha = 0.5f)
+    val contentTextColor = if (isCreator) VoidBlack else NeonWhite
+    val subTextColor = if (isCreator) VoidBlack.copy(alpha = 0.6f) else NeonWhite.copy(alpha = 0.5f)
 
     // Visual Effects (Blur & Alpha)
     val hoursLeftNumeric = remember(timeObj) {
@@ -130,7 +148,7 @@ fun EchoCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp) // ✅ Slightly taller to comfortably fit the category tag
+            .height(240.dp)
             .graphicsLayer { this.alpha = alpha }
             .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
             .clip(RoundedCornerShape(24.dp))
@@ -144,13 +162,13 @@ fun EchoCard(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
 
-            // ✅ NEW: CATEGORY FLAIR HEADER
+            // CATEGORY FLAIR HEADER
             if (category != null && category.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .padding(bottom = 12.dp)
                         .background(
-                            color = if (isCreatorPost) VoidBlack.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.08f),
+                            color = if (isCreator) VoidBlack.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.08f),
                             shape = RoundedCornerShape(8.dp)
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -159,21 +177,23 @@ fun EchoCard(
                         text = category.uppercase(),
                         style = VoidTypography.labelSmall.copy(
                             fontSize = 8.sp,
-                            color = if (isCreatorPost) VoidBlack.copy(alpha = 0.8f) else Stone400,
+                            color = if (isCreator) VoidBlack.copy(alpha = 0.8f) else Stone400,
                             letterSpacing = 1.sp
                         )
                     )
                 }
             } else {
-                // Spacing buffer if there is no category to keep the grid aligned
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
             // Main Text Content
             Text(
                 text = content,
-                style = VoidTypography.bodyLarge.copy(color = contentTextColor),
-                maxLines = 4, // Reduced from 5 to make room for category
+                style = VoidTypography.bodyLarge.copy(
+                    color = contentTextColor,
+                    fontWeight = if (isSuperUser) FontWeight.Bold else FontWeight.Normal
+                ),
+                maxLines = 4,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
@@ -185,69 +205,82 @@ fun EchoCard(
                         text = "EDITED",
                         style = VoidTypography.labelSmall.copy(
                             fontSize = 8.sp,
-                            color = if (isCreatorPost) VoidBlack.copy(alpha = 0.5f) else Stone700,
+                            color = if (isCreator) VoidBlack.copy(alpha = 0.5f) else Stone700,
                             letterSpacing = 1.sp
                         ),
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (hasReplied) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (isCreatorPost) VoidBlack else TerminalGreen,
-                                modifier = Modifier.size(14.dp)
+                // ✅ HIDE NORMAL ACTIONS IF SUPER USER
+                if (!isSuperUser) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (hasReplied) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (isCreator) VoidBlack else TerminalGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            Text(
+                                text = timeLeftString.uppercase(),
+                                style = VoidTypography.labelSmall.copy(
+                                    color = when {
+                                        timeLeftString == "Expired" -> VoidRed
+                                        isCreator -> VoidBlack.copy(alpha = 0.7f)
+                                        else -> subTextColor
+                                    }
+                                )
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
                         }
 
-                        Text(
-                            text = timeLeftString.uppercase(),
-                            style = VoidTypography.labelSmall.copy(
-                                color = when {
-                                    timeLeftString == "Expired" -> VoidRed
-                                    isCreatorPost -> VoidBlack.copy(alpha = 0.7f)
-                                    else -> subTextColor
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (showEditButton) {
+                                IconButton(
+                                    onClick = onEdit,
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit",
+                                        tint = if (isCreator) VoidBlack.copy(alpha = 0.5f) else Stone600,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
-                            )
-                        )
-                    }
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (showEditButton) {
                             IconButton(
-                                onClick = onEdit,
+                                onClick = onReport,
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Edit",
-                                    tint = if (isCreatorPost) VoidBlack.copy(alpha = 0.5f) else Stone600,
+                                    imageVector = Icons.Outlined.Flag,
+                                    contentDescription = "Report",
+                                    tint = if (isCreator) VoidBlack.copy(alpha = 0.5f) else Stone700,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-
-                        IconButton(
-                            onClick = onReport,
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Flag,
-                                contentDescription = "Report",
-                                tint = if (isCreatorPost) VoidBlack.copy(alpha = 0.5f) else Stone700,
-                                modifier = Modifier.size(16.dp)
-                            )
                         }
                     }
+                } else {
+                    // ✅ SHOW BROADCAST TAG INSTEAD OF ACTIONS
+                    Text(
+                        text = "SYSTEM BROADCAST",
+                        color = contentTextColor.copy(alpha = 0.6f),
+                        fontSize = 9.sp,
+                        letterSpacing = 2.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
         }

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.echo.core.utils.SharedPreferencesManager
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.data.remote.dto.NotificationDto
-// ✅ Changed to the Interface
 import com.example.echo.domain.repository.EchoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,11 +23,11 @@ import kotlin.random.Random
 
 @HiltViewModel
 class VoidViewModel @Inject constructor(
-    private val repository: EchoRepository, // ✅ Changed to the Interface
+    private val repository: EchoRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    // --- NEW: CATEGORY SYSTEM STATE ---
+    // --- CATEGORY SYSTEM STATE ---
     val categories = listOf("All", "Advice", "Vent", "Relationships", "Inner Thoughts")
 
     private val _selectedFeedCategory = MutableStateFlow("All")
@@ -38,6 +37,29 @@ class VoidViewModel @Inject constructor(
         _selectedFeedCategory.value = category
     }
 
+    // --- FREQUENCY / EMOTION STATE ---
+    // 0 = Angry, 1 = Sad, 2 = Neutral, 3 = Reflective, 4 = Hopeful, 5 = Happy
+    private val _sessionFrequency = MutableStateFlow(2)
+    val sessionFrequency: StateFlow<Int> = _sessionFrequency.asStateFlow()
+
+    private val _showFrequencyModal = MutableStateFlow(true)
+    val showFrequencyModal: StateFlow<Boolean> = _showFrequencyModal.asStateFlow()
+
+    fun setFrequency(level: Int) {
+        _sessionFrequency.value = level
+        _showFrequencyModal.value = false
+        // Re-sort current echoes based on new frequency immediately
+        _echoes.value = sortEchoesByFrequency(_echoes.value, level)
+    }
+
+    fun dismissFrequencyModal() {
+        _showFrequencyModal.value = false
+    }
+
+    fun openFrequencyModal() {
+        _showFrequencyModal.value = true
+    }
+
     // 1. DATA: Echoes
     private val _echoes = MutableStateFlow<List<EchoDto>>(emptyList())
     val echoes: StateFlow<List<EchoDto>> = _echoes.asStateFlow()
@@ -45,7 +67,6 @@ class VoidViewModel @Inject constructor(
     // 2. DATA: Active Souls
     private val _activeSouls = MutableStateFlow(0)
     val activeSouls: StateFlow<Int> = _activeSouls.asStateFlow()
-
     private val _activeCount = MutableStateFlow(0)
 
     // 3. UI STATE: Refreshing Loading Indicator
@@ -59,7 +80,6 @@ class VoidViewModel @Inject constructor(
     private val _isNotificationPanelOpen = MutableStateFlow(false)
     val isNotificationPanelOpen: StateFlow<Boolean> = _isNotificationPanelOpen.asStateFlow()
 
-    // --- UNREAD INDICATOR STATE ---
     private val _hasUnread = MutableStateFlow(false)
     val hasUnread: StateFlow<Boolean> = _hasUnread.asStateFlow()
 
@@ -67,11 +87,9 @@ class VoidViewModel @Inject constructor(
     private val _showGetStarted = MutableStateFlow(false)
     val showGetStarted: StateFlow<Boolean> = _showGetStarted.asStateFlow()
 
-    // --- NEW: DEEP LINK STATE ---
     private val _deepLinkEcho = MutableStateFlow<EchoDto?>(null)
     val deepLinkEcho: StateFlow<EchoDto?> = _deepLinkEcho.asStateFlow()
 
-    // --- NEW: EDIT STATE ---
     fun getUserId(): String = SharedPreferencesManager.getInstallationId(context)
 
     init {
@@ -80,33 +98,38 @@ class VoidViewModel @Inject constructor(
         startSoulSimulation()
     }
 
-    // --- DEEP LINK HANDLER ---
+    // --- EMOTIONAL SORTING LOGIC ---
+    private fun sortEchoesByFrequency(list: List<EchoDto>, frequency: Int): List<EchoDto> {
+        return list.sortedWith(compareByDescending<EchoDto> {
+            // Priority 1: Exact mood match
+            it.mood == frequency
+        }.thenByDescending {
+            // Priority 2: Nearby moods (Resonance)
+            it.mood?.let { m -> kotlin.math.abs(m - frequency) <= 1 } ?: false
+        }.thenByDescending {
+            // Priority 3: Freshness
+            it.createdAt
+        })
+    }
+
     fun handleDeepLink(echoId: String) {
         viewModelScope.launch {
-            if (_echoes.value.isEmpty()) {
-                delay(500)
-            }
+            if (_echoes.value.isEmpty()) delay(500)
             val echo = repository.getEchoById(echoId)
-            if (echo != null) {
-                _deepLinkEcho.value = echo
-            }
+            if (echo != null) _deepLinkEcho.value = echo
         }
     }
 
-    // --- FIX: RESET COUNT ON CONSUME ---
     fun consumeDeepLink() {
         val echoId = _deepLinkEcho.value?.id
-        if (echoId != null) {
-            SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
-        }
+        if (echoId != null) SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
         _deepLinkEcho.value = null
     }
 
-    // --- PUBLIC RELOAD FUNCTION ---
     fun loadFeed() {
         viewModelScope.launch {
             repository.getEchoes().collect { list ->
-                _echoes.value = list
+                _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
                 _activeCount.value = list.size
                 updateCount()
             }
@@ -118,7 +141,6 @@ class VoidViewModel @Inject constructor(
         _hasUnread.value = true
     }
 
-    // --- GET STARTED ACTIONS ---
     fun markGetStartedSeen() {
         SharedPreferencesManager.setFirstLaunchComplete(context)
         _showGetStarted.value = false
@@ -128,7 +150,6 @@ class VoidViewModel @Inject constructor(
         _showGetStarted.value = true
     }
 
-    // --- NOTIFICATION ACTIONS ---
     private fun checkNotificationStatus() {
         viewModelScope.launch {
             _hasUnread.value = repository.hasUnreadNotifications()
@@ -159,7 +180,6 @@ class VoidViewModel @Inject constructor(
     fun openEchoFromNotification(echoId: String, onLoaded: (EchoDto) -> Unit) {
         viewModelScope.launch {
             SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
-
             val echo = repository.getEchoById(echoId)
             if (echo != null) {
                 onLoaded(echo)
@@ -168,14 +188,12 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    // --- REFRESH ACTION ---
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
             delay(1000)
-
             repository.getEchoes().collect { list ->
-                _echoes.value = list
+                _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
                 _activeCount.value = list.size
                 updateCount()
                 _isRefreshing.value = false
@@ -184,7 +202,6 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    // --- SIMULATION LOGIC ---
     private fun startSoulSimulation() {
         viewModelScope.launch {
             while (true) {
@@ -202,17 +219,20 @@ class VoidViewModel @Inject constructor(
         _activeSouls.value = (baseCount + timeVariance + dailySalt).coerceAtLeast(3)
     }
 
-    // --- USER ACTIONS ---
-    // ✅ NEW: Added category parameter to postEcho
+    // ✅ UPDATED: Now passes the session frequency to the repository
     fun postEcho(content: String, category: String, colorCode: String? = null) {
         viewModelScope.launch {
-            repository.createEcho(content, category, colorCode)
+            repository.createEcho(
+                content = content,
+                category = category,
+                mood = _sessionFrequency.value, // Pass memory state to DB
+                colorCode = colorCode
+            )
             delay(500)
             loadFeed()
         }
     }
 
-    // NEW: Update existing Echo
     fun updateEcho(echoId: String, content: String) {
         viewModelScope.launch {
             repository.updateEcho(echoId, content)
@@ -228,7 +248,6 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    // NEW: Update existing Resonance
     fun updateReply(replyId: String, content: String) {
         viewModelScope.launch {
             repository.updateReply(replyId, content)

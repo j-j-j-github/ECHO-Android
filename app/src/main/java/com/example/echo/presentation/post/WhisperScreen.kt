@@ -56,8 +56,15 @@ fun WhisperOverlay(
 
     val isEditing = initialText.isNotEmpty()
 
+    // ✅ SUPER USER DETECTION
+    val textUpper = text.uppercase()
+    val isSuperUserPost = textUpper.contains("#CREATOR") ||
+            textUpper.contains("#ALERT") ||
+            textUpper.contains("#UPDATE")
+
+    // ✅ UPDATED VALIDATION: Bypasses category if Super User
     val isContentValid = text.trim().length >= 20
-    val isSpaceValid = selectedSpace.isNotEmpty() || isEditing
+    val isSpaceValid = selectedSpace.isNotEmpty() || isEditing || isSuperUserPost
     val isReadyToPost = isContentValid && isSpaceValid
 
     val shakeOffset = remember { Animatable(0f) }
@@ -73,6 +80,7 @@ fun WhisperOverlay(
         }
     }
 
+    // ✅ UPDATED SECRET MAP WITH NEW KEYWORDS
     val secretMap = mapOf("#Alert" to "#FF453A", "#Update" to "#4ADE80", "#Creator" to "#FFFFFF")
 
     LaunchedEffect(Unit) {
@@ -94,7 +102,10 @@ fun WhisperOverlay(
         }
 
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        onSend(cleanText, selectedSpace.ifEmpty { "Random" }, detectedColor)
+
+        // ✅ CATEGORY OVERRIDE: Default to "All" if Super User and no space selected
+        val finalSpace = if (isSuperUserPost && selectedSpace.isEmpty()) "All" else selectedSpace.ifEmpty { "Random" }
+        onSend(cleanText, finalSpace, detectedColor)
     }
 
     val triggerDeniedAnimation = {
@@ -131,7 +142,6 @@ fun WhisperOverlay(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // ✅ FIXED: Chained the padding correctly
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -157,7 +167,6 @@ fun WhisperOverlay(
                 Text(
                     text = "CHOOSE A SPACE",
                     style = VoidTypography.labelSmall.copy(color = Stone600, letterSpacing = 1.sp, fontSize = 10.sp),
-                    // ✅ FIXED: Chained the padding correctly
                     modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp)
                 )
 
@@ -192,7 +201,6 @@ fun WhisperOverlay(
                         }
                     }
 
-                    // ✅ Left & Right Gradient Fades
                     Row(modifier = Modifier.matchParentSize()) {
                         Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(overlayBgColor, Color.Transparent))))
                         Spacer(modifier = Modifier.weight(1f))

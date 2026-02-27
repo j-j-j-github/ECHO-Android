@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
@@ -39,7 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -64,15 +67,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.echo.R
 import com.example.echo.core.theme.*
 import com.example.echo.data.remote.dto.EchoDto
-import com.example.echo.presentation.components.ActiveSoulsChip
-import com.example.echo.presentation.components.EchoCard
-import com.example.echo.presentation.components.NotificationPanel
-import com.example.echo.presentation.components.PremiumLoader
-import com.example.echo.presentation.components.AboutOverlay
-import com.example.echo.presentation.components.ReportDialog
-import com.example.echo.presentation.components.GetStartedDialog
-import com.example.echo.presentation.components.ReportSuccessOverlay
+import com.example.echo.presentation.components.*
 import com.example.echo.presentation.post.WhisperOverlay
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
 
@@ -88,6 +85,18 @@ fun VoidScreen(
     val showGetStarted by viewModel.showGetStarted.collectAsStateWithLifecycle()
     val hasUnread by viewModel.hasUnread.collectAsStateWithLifecycle()
 
+    // Frequency States
+    val sessionFrequency by viewModel.sessionFrequency.collectAsStateWithLifecycle()
+    val showFrequencyModal by viewModel.showFrequencyModal.collectAsStateWithLifecycle()
+
+    // ✅ STRICT CHAINED LOGIC: Frequency Modal ONLY triggers if GetStarted is false (completed)
+    LaunchedEffect(showGetStarted) {
+        if (!showGetStarted) {
+            delay(600) // Wait for GetStarted to fully exit
+            viewModel.openFrequencyModal()
+        }
+    }
+
     val categories = viewModel.categories
     val selectedFeedCategory by viewModel.selectedFeedCategory.collectAsStateWithLifecycle()
 
@@ -96,10 +105,8 @@ fun VoidScreen(
     }
 
     val deepLinkEcho by viewModel.deepLinkEcho.collectAsStateWithLifecycle()
-
     var editingEchoId by remember { mutableStateOf<String?>(null) }
     var editingInitialText by remember { mutableStateOf("") }
-
     var showWhisper by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
 
@@ -112,38 +119,26 @@ fun VoidScreen(
     }
 
     var cachedEcho by remember { mutableStateOf<EchoDto?>(null) }
-    if (selectedEcho != null) {
-        cachedEcho = selectedEcho
-    }
+    if (selectedEcho != null) cachedEcho = selectedEcho
 
     var echoToReport by remember { mutableStateOf<EchoDto?>(null) }
     var showReportSuccess by remember { mutableStateOf(false) }
 
-    LaunchedEffect(deepLinkEcho) {
-        if (deepLinkEcho != null) {
-            selectedEchoId = deepLinkEcho?.id
-            viewModel.consumeDeepLink()
-        }
-    }
-
-    LaunchedEffect(showWhisper) {
-        if (!showWhisper) {
-            editingEchoId = null
-            editingInitialText = ""
-        }
-    }
-
-    // ✅ FIXED: Auto-scroll categories row, offset slightly so it doesn't hide behind the shadow
-    LaunchedEffect(selectedFeedCategory) {
-        val index = categories.indexOf(selectedFeedCategory)
-        if (index >= 0) {
-            // Scrolls to the item just before it to ensure the selected space sits comfortably in the visible area
-            categoryListState.animateScrollToItem(maxOf(0, index - 1))
-        }
-    }
-
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+
+    // ✅ SESSION COLOR: Solid vibrant color for the new frequency icon
+    val sessionColor by animateColorAsState(
+        targetValue = when(sessionFrequency) {
+            0 -> Color(0xFFFF453A) // Disturbed
+            1 -> Color(0xFFFF9F0A) // Heavy
+            2 -> Color(0xFF94A3B8) // Neutral
+            3 -> Color(0xFF64D2FF) // Calm
+            4 -> Color(0xFF34C759) // Radiant
+            else -> Color(0xFF94A3B8)
+        },
+        animationSpec = tween(1000), label = "sessionColor"
+    )
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
@@ -169,8 +164,9 @@ fun VoidScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = isPanelOpen || showWhisper || showAbout || selectedEchoId != null || echoToReport != null || showGetStarted) {
+    BackHandler(enabled = isPanelOpen || showWhisper || showAbout || selectedEchoId != null || echoToReport != null || showGetStarted || showFrequencyModal) {
         when {
+            showFrequencyModal -> viewModel.dismissFrequencyModal()
             echoToReport != null -> echoToReport = null
             selectedEchoId != null -> { selectedEchoId = null; viewModel.loadFeed() }
             showWhisper -> showWhisper = false
@@ -179,11 +175,9 @@ fun VoidScreen(
         }
     }
 
-    val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted
-    val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 10.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
+    val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted || showFrequencyModal
+    val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 8.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
     val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.6f else 0f, label = "dimAlpha", animationSpec = tween(400))
-    val isDetailCovered = selectedEchoId != null && echoToReport != null
-    val detailBlur by animateDpAsState(targetValue = if (isDetailCovered) 10.dp else 0.dp, label = "detailBlur", animationSpec = tween(400))
 
     val density = LocalDensity.current
     val refreshTriggerPx = with(density) { 80.dp.toPx() }
@@ -191,8 +185,6 @@ fun VoidScreen(
     val scope = rememberCoroutineScope()
     var pullOffsetY by remember { mutableFloatStateOf(0f) }
     var isSnapping by remember { mutableStateOf(false) }
-
-    // Swipe state
     var swipeDragOffset by remember { mutableFloatStateOf(0f) }
 
     fun snapTo(target: Float) {
@@ -254,6 +246,7 @@ fun VoidScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(VoidBlack)) {
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -311,12 +304,9 @@ fun VoidScreen(
                     }
                 }
 
-                // SPACES FILTER ROW
+                // Spaces Filter
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp)
-                        .zIndex(2f)
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).zIndex(2f)
                 ) {
                     LazyRow(
                         state = categoryListState,
@@ -349,7 +339,6 @@ fun VoidScreen(
                             }
                         }
                     }
-
                     Row(modifier = Modifier.matchParentSize()) {
                         Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(VoidBlack, Color.Transparent))))
                         Spacer(modifier = Modifier.weight(1f))
@@ -357,7 +346,7 @@ fun VoidScreen(
                     }
                 }
 
-                // Feed Wrapper with Horizontal Swipe Detection
+                // Feed Content
                 Box(modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -366,13 +355,13 @@ fun VoidScreen(
                         detectHorizontalDragGestures(
                             onDragEnd = {
                                 val minDrag = 120f
-                                if (swipeDragOffset < -minDrag) { // Swiped Left (Next Space)
+                                if (swipeDragOffset < -minDrag) {
                                     val idx = categories.indexOf(selectedFeedCategory)
                                     if (idx < categories.size - 1) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         viewModel.setFeedCategory(categories[idx + 1])
                                     }
-                                } else if (swipeDragOffset > minDrag) { // Swiped Right (Prev Space)
+                                } else if (swipeDragOffset > minDrag) {
                                     val idx = categories.indexOf(selectedFeedCategory)
                                     if (idx > 0) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -382,6 +371,7 @@ fun VoidScreen(
                                 swipeDragOffset = 0f
                             },
                             onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
                                 swipeDragOffset += dragAmount
                             }
                         )
@@ -393,7 +383,6 @@ fun VoidScreen(
                         }
                     }
 
-                    // Apple-like Horizontal Slide Transition
                     AnimatedContent(
                         targetState = selectedFeedCategory,
                         transitionSpec = {
@@ -407,7 +396,6 @@ fun VoidScreen(
                         label = "SpaceTransition",
                         modifier = Modifier.fillMaxSize().graphicsLayer { translationY = pullOffsetY }.zIndex(1f)
                     ) { currentCategory ->
-
                         val animatingEchoes = if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
 
                         LazyVerticalGrid(
@@ -418,48 +406,31 @@ fun VoidScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            // Permanent Space Header Card
-                            item(span = { GridItemSpan(2) }) {
-                                SpaceHeaderCard(space = currentCategory)
-                            }
+                            item(span = { GridItemSpan(2) }) { SpaceHeaderCard(space = currentCategory) }
 
                             if (animatingEchoes.isEmpty() && !isRefreshing) {
                                 item(span = { GridItemSpan(2) }) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(400.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(400.dp), contentAlignment = Alignment.Center) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = "THIS SPACE IS QUIET.",
                                                 style = VoidTypography.labelSmall.copy(
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp,
-                                                    color = Stone600,
+                                                    fontSize = 12.sp,
+                                                    color = com.example.echo.core.theme.Stone600,
                                                     letterSpacing = 2.sp
                                                 )
                                             )
                                             Spacer(modifier = Modifier.height(12.dp))
-                                            // ✅ FIXED: Using Typewriter Font style for Empty State subtext
                                             Text(
-                                                text = "Be the first to echo.",
-                                                style = VoidTypography.bodyLarge.copy(
-                                                    fontSize = 12.sp,
-                                                    color = Stone600,
-                                                    letterSpacing = 1.sp
-                                                )
+                                                text = "Be the first to Echo.",
+                                                style = VoidTypography.bodyLarge.copy(fontSize = 12.sp, color = com.example.echo.core.theme.Stone600)
                                             )
                                         }
                                     }
                                 }
                             } else {
-                                items(
-                                    items = animatingEchoes,
-                                    key = { it.id ?: "error_${it.hashCode()}" },
-                                    contentType = { "echo" }
-                                ) { echo ->
+                                items(items = animatingEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
                                     EchoCard(
                                         echoId = echo.id ?: "",
                                         content = echo.content,
@@ -484,183 +455,126 @@ fun VoidScreen(
                 }
             }
 
+            // The Dark Fade Gradient
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(150.dp)
+                    .height(180.dp)
                     .zIndex(1.5f)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, VoidBlack),
-                            startY = 0f,
-                            endY = Float.POSITIVE_INFINITY
-                        )
-                    )
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, VoidBlack.copy(alpha = 0.95f))))
             )
 
-            FloatingActionButton(
-                onClick = {
-                    editingEchoId = null
-                    editingInitialText = ""
-                    showWhisper = true
-                },
-                containerColor = NeonWhite,
-                contentColor = VoidBlack,
-                shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp)
-                    .size(64.dp)
-                    .zIndex(2f)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Whisper")
+            // PREMIUM CONSOLE CLUSTER
+            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp).zIndex(2f)) {
+                Surface(color = NeonWhite, shape = RoundedCornerShape(32.dp), shadowElevation = 12.dp) {
+                    Row(modifier = Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+
+                        // ✅ DYNAMIC FREQUENCY ICON (Mood Colored Waveform)
+                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.openFrequencyModal()
+                        }, contentAlignment = Alignment.Center) {
+                            Canvas(modifier = Modifier.size(24.dp)) {
+                                val strokeWidth = 2.5.dp.toPx()
+                                val gap = size.width / 4
+                                val heights = listOf(0.4f, 0.8f, 1.0f, 0.6f, 0.4f) // Waveform pattern
+
+                                heights.forEachIndexed { index, heightMultiplier ->
+                                    val x = index * gap
+                                    val barHeight = size.height * heightMultiplier
+                                    val shrinkAmount = (size.height - barHeight) / 2
+
+                                    drawLine(
+                                        color = sessionColor, // Uses the solid active mood color
+                                        start = Offset(x, shrinkAmount),
+                                        end = Offset(x, size.height - shrinkAmount),
+                                        strokeWidth = strokeWidth,
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                            }
+                        }
+
+                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(VoidBlack.copy(alpha = 0.1f)))
+
+                        // 2. WHISPER ICON
+                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).clickable {
+                            editingEchoId = null; editingInitialText = ""; showWhisper = true
+                        }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Add, "Whisper", tint = VoidBlack, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
             }
 
             if (dimAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = dimAlpha))
-                        .zIndex(3f)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
-                )
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = dimAlpha)).zIndex(3f)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { })
             }
         }
 
-        GlassScrim(visible = isPanelOpen, onDismiss = {
-            viewModel.closeNotificationPanel()
-            viewModel.loadFeed()
-        })
-        AnimatedVisibility(
-            visible = isPanelOpen,
-            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)),
-            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)),
-            modifier = Modifier.align(Alignment.CenterEnd).zIndex(4f)
-        ) {
-            NotificationPanel(
-                notifications = notifications,
-                onClose = { viewModel.closeNotificationPanel() },
-                onNotificationClick = { echoId -> viewModel.openEchoFromNotification(echoId) { selectedEchoId = it.id } }
-            )
+        // --- OVERLAYS ---
+
+        GlassScrim(visible = isPanelOpen, onDismiss = { viewModel.closeNotificationPanel(); viewModel.loadFeed() })
+        AnimatedVisibility(visible = isPanelOpen, enter = slideInHorizontally { it }, exit = slideOutHorizontally { it }, modifier = Modifier.align(Alignment.CenterEnd).zIndex(4f)) {
+            NotificationPanel(notifications = notifications, onClose = { viewModel.closeNotificationPanel() },
+                onNotificationClick = { id -> viewModel.openEchoFromNotification(id) { selectedEchoId = it.id } })
         }
 
         GlassScrim(visible = showAbout, onDismiss = { showAbout = false })
-        AnimatedVisibility(
-            visible = showAbout,
-            enter = fadeIn(tween(200)) + scaleIn(tween(300), initialScale = 0.95f),
-            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f),
-            modifier = Modifier.zIndex(5f)
-        ) {
+        AnimatedVisibility(visible = showAbout, enter = fadeIn() + scaleIn(initialScale = 0.95f), exit = fadeOut() + scaleOut(targetScale = 0.95f), modifier = Modifier.zIndex(5f)) {
             AboutOverlay(onDismiss = { showAbout = false }, onReplayProtocol = { showAbout = false; viewModel.replayGetStarted() })
         }
 
         GlassScrim(visible = showWhisper, onDismiss = { showWhisper = false })
-        AnimatedVisibility(
-            visible = showWhisper,
-            enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { -it }),
-            exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { -it }),
-            modifier = Modifier.align(Alignment.TopCenter).zIndex(5f)
-        ) {
-            key(editingEchoId ?: "new_post") {
-                WhisperOverlay(
-                    onDismiss = {
-                        showWhisper = false
-                        editingEchoId = null
-                        editingInitialText = ""
-                    },
-                    initialText = editingInitialText,
-                    onSend = { text, category, color ->
-                        if (editingEchoId != null) {
-                            viewModel.updateEcho(editingEchoId!!, text)
-                        } else {
-                            viewModel.postEcho(text, category, color)
-                        }
-                        showWhisper = false
-                        editingEchoId = null
-                        editingInitialText = ""
-                    }
-                )
+        AnimatedVisibility(visible = showWhisper, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }, modifier = Modifier.align(Alignment.TopCenter).zIndex(5f)) {
+            key(editingEchoId ?: "new") {
+                WhisperOverlay(onDismiss = { showWhisper = false }, initialText = editingInitialText,
+                    onSend = { t, cat, col -> if (editingEchoId != null) viewModel.updateEcho(editingEchoId!!, t) else viewModel.postEcho(t, cat, col); showWhisper = false })
             }
         }
 
-        GlassScrim(visible = selectedEchoId != null, onDismiss = {
-            selectedEchoId = null
-            viewModel.loadFeed()
-        })
-
-        AnimatedVisibility(
-            visible = selectedEchoId != null,
-            enter = fadeIn(tween(300)) + scaleIn(tween(300), initialScale = 0.9f),
-            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.9f),
-            modifier = Modifier.fillMaxSize().zIndex(6f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && detailBlur > 0.dp)
-                            Modifier.blur(detailBlur)
-                        else Modifier
-                    )
-            ) {
-                if (cachedEcho != null) {
-                    DetailOverlay(
-                        echo = cachedEcho!!,
-                        onDismiss = {
-                            selectedEchoId = null
-                            viewModel.loadFeed()
-                        },
-                        onReply = { reply -> cachedEcho!!.id?.let { viewModel.postReply(it, reply) } },
-                        onUpdateReply = { replyId, newContent -> viewModel.updateReply(replyId, newContent) },
-                        onEditEcho = {
-                            selectedEchoId = null
-                            editingEchoId = cachedEcho!!.id
-                            editingInitialText = cachedEcho!!.content
-                            showWhisper = true
-                        },
-                        onReport = { echoToReport = cachedEcho }
-                    )
+        GlassScrim(visible = selectedEchoId != null, onDismiss = { selectedEchoId = null; viewModel.loadFeed() })
+        AnimatedVisibility(visible = selectedEchoId != null, enter = fadeIn() + scaleIn(initialScale = 0.9f), exit = fadeOut() + scaleOut(targetScale = 0.9f), modifier = Modifier.fillMaxSize().zIndex(6f)) {
+            // ✅ BLUR REMOVED FROM OVERLAY BOX
+            Box(modifier = Modifier.fillMaxSize()) {
+                cachedEcho?.let { echo ->
+                    DetailOverlay(echo = echo, onDismiss = { selectedEchoId = null; viewModel.loadFeed() },
+                        onReply = { r -> echo.id?.let { viewModel.postReply(it, r) } },
+                        onUpdateReply = { id, c -> viewModel.updateReply(id, c) },
+                        onEditEcho = { selectedEchoId = null; editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                        onReport = { echoToReport = echo })
                 }
             }
         }
 
-        AnimatedVisibility(
-            visible = echoToReport != null,
-            enter = fadeIn(tween(200)) + scaleIn(tween(300), initialScale = 0.95f),
-            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f),
-            modifier = Modifier.zIndex(7f)
-        ) {
+        AnimatedVisibility(visible = echoToReport != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.zIndex(10f)) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable { echoToReport = null })
-            ReportDialog(
-                onDismiss = { echoToReport = null },
-                onConfirm = { echoToReport?.id?.let { id -> viewModel.reportEcho(id) }; showReportSuccess = true }
-            )
+            ReportDialog(onDismiss = { echoToReport = null }, onConfirm = { echoToReport?.id?.let { viewModel.reportEcho(it) }; showReportSuccess = true })
         }
 
-        AnimatedVisibility(
-            visible = showGetStarted,
-            enter = fadeIn(tween(500)),
-            exit = fadeOut(tween(500)),
-            modifier = Modifier.zIndex(8f)
-        ) {
+        AnimatedVisibility(visible = showGetStarted, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.zIndex(11f)) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f))) {
                 GetStartedDialog(onEnterClick = { viewModel.markGetStartedSeen() })
             }
         }
 
-        AnimatedVisibility(
-            visible = showReportSuccess,
-            enter = fadeIn(tween(300)),
-            exit = fadeOut(tween(300)),
-            modifier = Modifier.zIndex(9f)
-        ) {
+        AnimatedVisibility(visible = showReportSuccess, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.zIndex(12f)) {
             ReportSuccessOverlay(onDismiss = { showReportSuccess = false; echoToReport = null; selectedEchoId = null })
         }
+
+        // ✅ FINAL TOP-LEVEL MODAL (Slide animation handled inside component)
+        FrequencyModal(
+            modifier = Modifier.zIndex(100f),
+            isVisible = showFrequencyModal && !showGetStarted,
+            currentFrequency = sessionFrequency,
+            onDismiss = { viewModel.dismissFrequencyModal() },
+            onFrequencySet = { viewModel.setFrequency(it) }
+        )
     }
 }
 
-// ✅ NEW: Image Backgrounds with Premium Dark Gradient
 @Composable
 fun SpaceHeaderCard(space: String) {
     val title = space.uppercase()
@@ -680,55 +594,13 @@ fun SpaceHeaderCard(space: String) {
         else -> R.drawable.innerthoughts
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp)
-            .clip(RoundedCornerShape(24.dp))
-    ) {
-        // 1. The Background Image
-        Image(
-            painter = painterResource(id = imageRes),
-            contentDescription = "Background for $space",
-            contentScale = ContentScale.Crop, // Zooms the image to perfectly fill the box
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // 2. The Premium Dark Gradient Overlay
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.3f),
-                            Color.Black.copy(alpha = 0.9f)
-                        )
-                    )
-                )
-        )
-
-        // 3. The Text Content
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Bottom
-        ) {
-            Text(
-                text = title,
-                style = VoidTypography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = NeonWhite,
-                    letterSpacing = 2.sp
-                )
-            )
+    Box(modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(24.dp))) {
+        Image(painter = painterResource(id = imageRes), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.9f)))))
+        Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Bottom) {
+            Text(text = title, style = VoidTypography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NeonWhite, letterSpacing = 2.sp))
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = description,
-                style = VoidTypography.bodyLarge.copy(color = NeonWhite.copy(alpha = 0.8f))
-            )
+            Text(text = description, style = VoidTypography.bodyLarge.copy(color = NeonWhite.copy(alpha = 0.8f)))
         }
     }
 }
@@ -736,7 +608,6 @@ fun SpaceHeaderCard(space: String) {
 @Composable
 fun GlassScrim(visible: Boolean, onDismiss: () -> Unit) {
     AnimatedVisibility(visible = visible, enter = fadeIn(tween(300)), exit = fadeOut(tween(300)), modifier = Modifier.zIndex(3f)) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() })
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(remember { MutableInteractionSource() }, null) { onDismiss() })
     }
 }

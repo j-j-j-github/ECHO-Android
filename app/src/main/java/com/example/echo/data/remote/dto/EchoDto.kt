@@ -12,5 +12,6 @@ data class EchoDto(
     @SerialName("signature_id") val signatureId: String? = null,
     @SerialName("color_code") val colorCode: String? = null,
     val category: String? = null, // ✅ NEW: Category field
+    val mood: Int? = null,
     val replies: List<ReplyDto>? = null
 )

@@ -40,13 +40,14 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
-    // ✅ Includes the new Category parameter for the database
-    override suspend fun createEcho(content: String, category: String, colorCode: String?) {
+    // ✅ FIXED: Added 'mood: Int' to the parameters to match the EchoRepository interface
+    override suspend fun createEcho(content: String, category: String, mood: Int, colorCode: String?) {
         try {
             val echo = EchoDto(
                 id = UUID.randomUUID().toString(),
                 content = content,
                 category = category,
+                mood = mood, // ✅ FIXED: Now using the parameter passed from ViewModel
                 signatureId = SharedPreferencesManager.getInstallationId(context),
                 colorCode = colorCode
             )
