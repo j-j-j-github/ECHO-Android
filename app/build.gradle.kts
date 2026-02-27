@@ -15,8 +15,8 @@ android {
         applicationId = "com.j3labs.echo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.1"
+        versionCode = 6
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -70,6 +70,9 @@ dependencies {
 
     // Icons
     implementation(libs.androidx.material.icons.extended)
+
+    //Auto-update popup
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 
     // Navigation & Serialization
     implementation(libs.androidx.navigation.compose)

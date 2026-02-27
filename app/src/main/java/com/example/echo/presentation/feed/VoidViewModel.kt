@@ -1,12 +1,19 @@
 package com.example.echo.presentation.feed
 
+import android.app.Activity
 import android.content.Context
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.echo.core.utils.SharedPreferencesManager
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.data.remote.dto.NotificationDto
 import com.example.echo.domain.repository.EchoRepository
+import com.google.android.play.core.appupdate.AppUpdateInfo
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -27,6 +34,9 @@ class VoidViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
+    // --- APP UPDATE STATE ---
+    private val appUpdateManager = AppUpdateManagerFactory.create(context)
+
     // --- CATEGORY SYSTEM STATE ---
     val categories = listOf("All", "Advice", "Vent", "Relationships", "Inner Thoughts")
 
@@ -38,7 +48,7 @@ class VoidViewModel @Inject constructor(
     }
 
     // --- FREQUENCY / EMOTION STATE ---
-    // 0 = Angry, 1 = Sad, 2 = Neutral, 3 = Reflective, 4 = Hopeful, 5 = Happy
+    // 0 = Disturbed, 1 = Heavy, 2 = Neutral, 3 = Calm, 4 = Radiant
     private val _sessionFrequency = MutableStateFlow(2)
     val sessionFrequency: StateFlow<Int> = _sessionFrequency.asStateFlow()
 
@@ -96,6 +106,35 @@ class VoidViewModel @Inject constructor(
         _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
         loadFeed()
         startSoulSimulation()
+        checkForUpdates()
+    }
+
+    // --- IN-APP UPDATE LOGIC ---
+    private fun checkForUpdates() {
+        val appUpdateInfoTask = appUpdateManager.appUpdateInfo
+        appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
+            if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)
+            ) {
+                // Update is available. This check usually triggers the UI flow in the View layer.
+            }
+        }
+    }
+
+    /**
+     * Call this from the Fragment/Activity/Composable to trigger the Play Store pop-up
+     */
+    fun triggerUpdateFlow(activity: Activity, launcher: ActivityResultLauncher<IntentSenderRequest>) {
+        appUpdateManager.appUpdateInfo.addOnSuccessListener { appUpdateInfo ->
+            if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE) {
+                appUpdateManager.startUpdateFlowForResult(
+                    appUpdateInfo,
+                    AppUpdateType.FLEXIBLE,
+                    activity,
+                    1001 // Request code
+                )
+            }
+        }
     }
 
     // --- EMOTIONAL SORTING LOGIC ---
@@ -225,7 +264,7 @@ class VoidViewModel @Inject constructor(
             repository.createEcho(
                 content = content,
                 category = category,
-                mood = _sessionFrequency.value, // Pass memory state to DB
+                mood = _sessionFrequency.value, // Pass memory state to DB (0-4)
                 colorCode = colorCode
             )
             delay(500)

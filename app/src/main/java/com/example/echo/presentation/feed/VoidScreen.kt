@@ -1,11 +1,14 @@
 package com.example.echo.presentation.feed
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
@@ -89,6 +92,25 @@ fun VoidScreen(
     val sessionFrequency by viewModel.sessionFrequency.collectAsStateWithLifecycle()
     val showFrequencyModal by viewModel.showFrequencyModal.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+
+    // ✅ UPDATE LAUNCHER: Handles the result from the Play Store pop-up
+    val updateLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            // User cancelled the update or it failed.
+        }
+    }
+
+    // ✅ CHECK FOR UPDATES ON STARTUP
+    LaunchedEffect(Unit) {
+        val activity = context as? Activity
+        if (activity != null) {
+            viewModel.triggerUpdateFlow(activity, updateLauncher)
+        }
+    }
+
     // ✅ STRICT CHAINED LOGIC: Frequency Modal ONLY triggers if GetStarted is false (completed)
     LaunchedEffect(showGetStarted) {
         if (!showGetStarted) {
@@ -99,6 +121,15 @@ fun VoidScreen(
 
     val categories = viewModel.categories
     val selectedFeedCategory by viewModel.selectedFeedCategory.collectAsStateWithLifecycle()
+
+    // ✅ AUTO-SCROLL CATEGORY CHIPS: Keeps the active space visible in the top bar
+    val categoryListState = rememberLazyListState()
+    LaunchedEffect(selectedFeedCategory) {
+        val index = categories.indexOf(selectedFeedCategory)
+        if (index != -1) {
+            categoryListState.animateScrollToItem(index)
+        }
+    }
 
     val filteredEchoes = remember(echoes, selectedFeedCategory) {
         if (selectedFeedCategory == "All") echoes else echoes.filter { it.category == selectedFeedCategory }
@@ -111,7 +142,6 @@ fun VoidScreen(
     var showAbout by remember { mutableStateOf(false) }
 
     val listState = rememberLazyGridState()
-    val categoryListState = rememberLazyListState()
     var selectedEchoId by remember { mutableStateOf<String?>(null) }
 
     val selectedEcho = remember(filteredEchoes, selectedEchoId, deepLinkEcho) {
@@ -124,7 +154,6 @@ fun VoidScreen(
     var echoToReport by remember { mutableStateOf<EchoDto?>(null) }
     var showReportSuccess by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
     // ✅ SESSION COLOR: Solid vibrant color for the new frequency icon
