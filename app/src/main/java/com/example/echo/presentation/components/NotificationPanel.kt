@@ -17,7 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,10 +83,19 @@ fun NotificationPanel(
             // --- LIST ---
             if (notifications.isEmpty()) {
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    // ✅ UPDATED: Matches the ECHO aesthetic (Uppercase, Letter Spacing, Centered)
                     Text(
-                        text = "The void is silent...",
-                        style = VoidTypography.bodyLarge.copy(color = Stone700, fontStyle = FontStyle.Italic),
-                        modifier = Modifier.padding(horizontal = 24.dp)
+                        text = "THE VOID IS SILENT.",
+                        style = VoidTypography.labelSmall.copy(
+                            color = Stone600,
+                            letterSpacing = 2.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp
+                        ),
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp)
+                            .fillMaxWidth(),
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
@@ -96,7 +106,6 @@ fun NotificationPanel(
                     contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // FIX: Added 'key = { it.id }' for 120Hz smooth scrolling
                     items(items = notifications, key = { it.id }) { item ->
                         FadeInItem {
                             NotificationItem(item = item, onClick = { onNotificationClick(item.echoId) })

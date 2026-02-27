@@ -72,6 +72,8 @@ import com.example.echo.core.theme.*
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.presentation.components.*
 import com.example.echo.presentation.post.WhisperOverlay
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.InstallStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
@@ -93,6 +95,11 @@ fun VoidScreen(
     val showFrequencyModal by viewModel.showFrequencyModal.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // ✅ 1. NEW SNACKBAR & UPDATE MANAGER STATE
+    val snackbarHostState = remember { SnackbarHostState() }
+    val appUpdateManager = remember { AppUpdateManagerFactory.create(context) }
 
     // ✅ UPDATE LAUNCHER: Handles the result from the Play Store pop-up
     val updateLauncher = rememberLauncherForActivityResult(
@@ -103,11 +110,28 @@ fun VoidScreen(
         }
     }
 
-    // ✅ CHECK FOR UPDATES ON STARTUP
+    // ✅ 2. MODIFIED CHECK FOR UPDATES: Includes the Snackbar listener
     LaunchedEffect(Unit) {
         val activity = context as? Activity
         if (activity != null) {
+            // Trigger the initial check/popup
             viewModel.triggerUpdateFlow(activity, updateLauncher)
+
+            // Listen for Flexible Update download completion
+            appUpdateManager.registerListener { state ->
+                if (state.installStatus() == InstallStatus.DOWNLOADED) {
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = "New version ready.",
+                            actionLabel = "RESTART",
+                            duration = SnackbarDuration.Indefinite
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            appUpdateManager.completeUpdate()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -211,7 +235,6 @@ fun VoidScreen(
     val density = LocalDensity.current
     val refreshTriggerPx = with(density) { 80.dp.toPx() }
     val maxDragPx = with(density) { 150.dp.toPx() }
-    val scope = rememberCoroutineScope()
     var pullOffsetY by remember { mutableFloatStateOf(0f) }
     var isSnapping by remember { mutableStateOf(false) }
     var swipeDragOffset by remember { mutableFloatStateOf(0f) }
@@ -544,6 +567,23 @@ fun VoidScreen(
         }
 
         // --- OVERLAYS ---
+
+        // ✅ 3. ADDED SNACKBAR HOST: floats above bottom cluster
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 120.dp)
+                .zIndex(100f)
+        ) { data ->
+            Snackbar(
+                containerColor = NeonWhite,
+                contentColor = VoidBlack,
+                actionColor = Color(0xFFFF453A), // VoidRed
+                snackbarData = data,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
 
         GlassScrim(visible = isPanelOpen, onDismiss = { viewModel.closeNotificationPanel(); viewModel.loadFeed() })
         AnimatedVisibility(visible = isPanelOpen, enter = slideInHorizontally { it }, exit = slideOutHorizontally { it }, modifier = Modifier.align(Alignment.CenterEnd).zIndex(4f)) {
