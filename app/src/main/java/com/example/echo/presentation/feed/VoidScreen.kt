@@ -8,15 +8,23 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
@@ -27,16 +35,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -46,6 +61,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.echo.R
 import com.example.echo.core.theme.*
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.presentation.components.ActiveSoulsChip
@@ -64,7 +80,6 @@ import androidx.compose.runtime.withFrameNanos
 fun VoidScreen(
     viewModel: VoidViewModel = hiltViewModel()
 ) {
-    // 1. DATA COLLECTORS
     val echoes by viewModel.echoes.collectAsStateWithLifecycle()
     val activeCount by viewModel.activeSouls.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -73,25 +88,29 @@ fun VoidScreen(
     val showGetStarted by viewModel.showGetStarted.collectAsStateWithLifecycle()
     val hasUnread by viewModel.hasUnread.collectAsStateWithLifecycle()
 
+    val categories = viewModel.categories
+    val selectedFeedCategory by viewModel.selectedFeedCategory.collectAsStateWithLifecycle()
+
+    val filteredEchoes = remember(echoes, selectedFeedCategory) {
+        if (selectedFeedCategory == "All") echoes else echoes.filter { it.category == selectedFeedCategory }
+    }
+
     val deepLinkEcho by viewModel.deepLinkEcho.collectAsStateWithLifecycle()
 
     var editingEchoId by remember { mutableStateOf<String?>(null) }
     var editingInitialText by remember { mutableStateOf("") }
 
-    // 2. UI STATES
     var showWhisper by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
 
-    // --- SCROLL STATE ---
     val listState = rememberLazyGridState()
-
+    val categoryListState = rememberLazyListState()
     var selectedEchoId by remember { mutableStateOf<String?>(null) }
 
-    val selectedEcho = remember(echoes, selectedEchoId, deepLinkEcho) {
-        echoes.find { it.id == selectedEchoId } ?: deepLinkEcho?.takeIf { it.id == selectedEchoId }
+    val selectedEcho = remember(filteredEchoes, selectedEchoId, deepLinkEcho) {
+        filteredEchoes.find { it.id == selectedEchoId } ?: deepLinkEcho?.takeIf { it.id == selectedEchoId }
     }
 
-    // --- ANIMATION CACHE ---
     var cachedEcho by remember { mutableStateOf<EchoDto?>(null) }
     if (selectedEcho != null) {
         cachedEcho = selectedEcho
@@ -107,7 +126,6 @@ fun VoidScreen(
         }
     }
 
-    // ✅ FAILSAFE 1: Ensures data is wiped immediately when the overlay closes
     LaunchedEffect(showWhisper) {
         if (!showWhisper) {
             editingEchoId = null
@@ -115,8 +133,18 @@ fun VoidScreen(
         }
     }
 
-    // --- REAL-TIME LISTENER ---
+    // ✅ FIXED: Auto-scroll categories row, offset slightly so it doesn't hide behind the shadow
+    LaunchedEffect(selectedFeedCategory) {
+        val index = categories.indexOf(selectedFeedCategory)
+        if (index >= 0) {
+            // Scrolls to the item just before it to ensure the selected space sits comfortably in the visible area
+            categoryListState.animateScrollToItem(maxOf(0, index - 1))
+        }
+    }
+
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -132,7 +160,6 @@ fun VoidScreen(
         onDispose { context.unregisterReceiver(receiver) }
     }
 
-    // --- AUTO-REFRESH ---
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -142,7 +169,6 @@ fun VoidScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 3. BACK HANDLER
     BackHandler(enabled = isPanelOpen || showWhisper || showAbout || selectedEchoId != null || echoToReport != null || showGetStarted) {
         when {
             echoToReport != null -> echoToReport = null
@@ -153,25 +179,21 @@ fun VoidScreen(
         }
     }
 
-    // 4. BLUR & DIM STATES
     val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted
-
-    // Blur Animation
     val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 10.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
-
-    // Dimming Animation
     val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.6f else 0f, label = "dimAlpha", animationSpec = tween(400))
-
     val isDetailCovered = selectedEchoId != null && echoToReport != null
     val detailBlur by animateDpAsState(targetValue = if (isDetailCovered) 10.dp else 0.dp, label = "detailBlur", animationSpec = tween(400))
 
-    // 5. PHYSICS
     val density = LocalDensity.current
     val refreshTriggerPx = with(density) { 80.dp.toPx() }
     val maxDragPx = with(density) { 150.dp.toPx() }
     val scope = rememberCoroutineScope()
     var pullOffsetY by remember { mutableFloatStateOf(0f) }
     var isSnapping by remember { mutableStateOf(false) }
+
+    // Swipe state
+    var swipeDragOffset by remember { mutableFloatStateOf(0f) }
 
     fun snapTo(target: Float) {
         if (isSnapping) return
@@ -231,9 +253,7 @@ fun VoidScreen(
         if (!isRefreshing && pullOffsetY > 0f) snapTo(0f)
     }
 
-    // --- UI ---
     Box(modifier = Modifier.fillMaxSize().background(VoidBlack)) {
-        // LAYER 1: HOME
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -291,51 +311,179 @@ fun VoidScreen(
                     }
                 }
 
-                // Feed
-                Box(modifier = Modifier.weight(1f).fillMaxWidth().nestedScroll(nestedScrollConnection)) {
+                // SPACES FILTER ROW
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .zIndex(2f)
+                ) {
+                    LazyRow(
+                        state = categoryListState,
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp)
+                    ) {
+                        items(categories) { category ->
+                            val isSelected = category == selectedFeedCategory
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (isSelected) NeonWhite else Stone900)
+                                    .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.setFeedCategory(category)
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = category.uppercase(),
+                                    style = VoidTypography.labelSmall.copy(
+                                        color = if (isSelected) VoidBlack else Stone400,
+                                        letterSpacing = 1.sp,
+                                        fontSize = 12.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.matchParentSize()) {
+                        Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(VoidBlack, Color.Transparent))))
+                        Spacer(modifier = Modifier.weight(1f))
+                        Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, VoidBlack))))
+                    }
+                }
+
+                // Feed Wrapper with Horizontal Swipe Detection
+                Box(modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .nestedScroll(nestedScrollConnection)
+                    .pointerInput(selectedFeedCategory) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                val minDrag = 120f
+                                if (swipeDragOffset < -minDrag) { // Swiped Left (Next Space)
+                                    val idx = categories.indexOf(selectedFeedCategory)
+                                    if (idx < categories.size - 1) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.setFeedCategory(categories[idx + 1])
+                                    }
+                                } else if (swipeDragOffset > minDrag) { // Swiped Right (Prev Space)
+                                    val idx = categories.indexOf(selectedFeedCategory)
+                                    if (idx > 0) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.setFeedCategory(categories[idx - 1])
+                                    }
+                                }
+                                swipeDragOffset = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                swipeDragOffset += dragAmount
+                            }
+                        )
+                    }
+                ) {
                     Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp).height(40.dp).zIndex(0f)) {
                         if (pullOffsetY > 5f) {
                             PremiumLoader(isRefreshing = isRefreshing, pullProgress = (pullOffsetY / refreshTriggerPx).coerceIn(0f, 1f))
                         }
                     }
-                    LazyVerticalGrid(
-                        state = listState,
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { translationY = pullOffsetY }
-                            .zIndex(1f)
-                    ) {
-                        items(
-                            items = echoes,
-                            key = { it.id ?: "error_${it.hashCode()}" },
-                            contentType = { "echo" }
-                        ) { echo ->
-                            EchoCard(
-                                echoId = echo.id ?: "",
-                                content = echo.content,
-                                createdAt = echo.createdAt,
-                                updatedAt = echo.updatedAt,
-                                colorCode = echo.colorCode,
-                                signatureId = echo.signatureId,
-                                replies = echo.replies,
-                                onReport = { echoToReport = echo },
-                                onEdit = {
-                                    editingEchoId = echo.id
-                                    editingInitialText = echo.content
-                                    showWhisper = true
-                                },
-                                onClick = { selectedEchoId = echo.id }
-                            )
+
+                    // Apple-like Horizontal Slide Transition
+                    AnimatedContent(
+                        targetState = selectedFeedCategory,
+                        transitionSpec = {
+                            val targetIdx = categories.indexOf(targetState)
+                            val initialIdx = categories.indexOf(initialState)
+                            val slideDir = if (targetIdx > initialIdx) 1 else -1
+
+                            (fadeIn(animationSpec = tween(300)) + slideInHorizontally(animationSpec = tween(400, easing = EaseOutQuart)) { it * slideDir / 2 })
+                                .togetherWith(fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(400, easing = EaseOutQuart)) { -it * slideDir / 2 })
+                        },
+                        label = "SpaceTransition",
+                        modifier = Modifier.fillMaxSize().graphicsLayer { translationY = pullOffsetY }.zIndex(1f)
+                    ) { currentCategory ->
+
+                        val animatingEchoes = if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
+
+                        LazyVerticalGrid(
+                            state = listState,
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // Permanent Space Header Card
+                            item(span = { GridItemSpan(2) }) {
+                                SpaceHeaderCard(space = currentCategory)
+                            }
+
+                            if (animatingEchoes.isEmpty() && !isRefreshing) {
+                                item(span = { GridItemSpan(2) }) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(400.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "THIS SPACE IS QUIET.",
+                                                style = VoidTypography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = Stone600,
+                                                    letterSpacing = 2.sp
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            // ✅ FIXED: Using Typewriter Font style for Empty State subtext
+                                            Text(
+                                                text = "Be the first to echo.",
+                                                style = VoidTypography.bodyLarge.copy(
+                                                    fontSize = 12.sp,
+                                                    color = Stone600,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                items(
+                                    items = animatingEchoes,
+                                    key = { it.id ?: "error_${it.hashCode()}" },
+                                    contentType = { "echo" }
+                                ) { echo ->
+                                    EchoCard(
+                                        echoId = echo.id ?: "",
+                                        content = echo.content,
+                                        createdAt = echo.createdAt,
+                                        updatedAt = echo.updatedAt,
+                                        colorCode = echo.colorCode,
+                                        signatureId = echo.signatureId,
+                                        category = echo.category,
+                                        replies = echo.replies,
+                                        onReport = { echoToReport = echo },
+                                        onEdit = {
+                                            editingEchoId = echo.id
+                                            editingInitialText = echo.content
+                                            showWhisper = true
+                                        },
+                                        onClick = { selectedEchoId = echo.id }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            // --- BOTTOM GRADIENT FADE ---
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -351,7 +499,6 @@ fun VoidScreen(
                     )
             )
 
-            // FAB
             FloatingActionButton(
                 onClick = {
                     editingEchoId = null
@@ -370,7 +517,6 @@ fun VoidScreen(
                 Icon(Icons.Default.Add, contentDescription = "Whisper")
             }
 
-            // OPTIMIZED DIMMING OVERLAY
             if (dimAlpha > 0f) {
                 Box(
                     modifier = Modifier
@@ -382,7 +528,6 @@ fun VoidScreen(
             }
         }
 
-        // LAYER 2: OVERLAYS
         GlassScrim(visible = isPanelOpen, onDismiss = {
             viewModel.closeNotificationPanel()
             viewModel.loadFeed()
@@ -417,7 +562,6 @@ fun VoidScreen(
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier.align(Alignment.TopCenter).zIndex(5f)
         ) {
-            // ✅ FAILSAFE 2: Forcing a total UI recreation when the edit ID changes
             key(editingEchoId ?: "new_post") {
                 WhisperOverlay(
                     onDismiss = {
@@ -426,11 +570,11 @@ fun VoidScreen(
                         editingInitialText = ""
                     },
                     initialText = editingInitialText,
-                    onSend = { text, color ->
+                    onSend = { text, category, color ->
                         if (editingEchoId != null) {
                             viewModel.updateEcho(editingEchoId!!, text)
                         } else {
-                            viewModel.postEcho(text, color)
+                            viewModel.postEcho(text, category, color)
                         }
                         showWhisper = false
                         editingEchoId = null
@@ -440,7 +584,6 @@ fun VoidScreen(
             }
         }
 
-        // LAYER 3: DETAIL
         GlassScrim(visible = selectedEchoId != null, onDismiss = {
             selectedEchoId = null
             viewModel.loadFeed()
@@ -482,7 +625,6 @@ fun VoidScreen(
             }
         }
 
-        // LAYER 4: REPORT DIALOG
         AnimatedVisibility(
             visible = echoToReport != null,
             enter = fadeIn(tween(200)) + scaleIn(tween(300), initialScale = 0.95f),
@@ -496,7 +638,6 @@ fun VoidScreen(
             )
         }
 
-        // LAYER 5: GET STARTED
         AnimatedVisibility(
             visible = showGetStarted,
             enter = fadeIn(tween(500)),
@@ -508,7 +649,6 @@ fun VoidScreen(
             }
         }
 
-        // LAYER 6: REPORT SUCCESS
         AnimatedVisibility(
             visible = showReportSuccess,
             enter = fadeIn(tween(300)),
@@ -520,7 +660,79 @@ fun VoidScreen(
     }
 }
 
-// ... Helpers ...
+// ✅ NEW: Image Backgrounds with Premium Dark Gradient
+@Composable
+fun SpaceHeaderCard(space: String) {
+    val title = space.uppercase()
+    val description = when (space) {
+        "All" -> "Every Echo. Every voice. Unfiltered."
+        "Advice" -> "Ask for guidance. Offer perspective. Real questions, real answers."
+        "Vent" -> "Say what you’ve been holding in. No judgment. Just release."
+        "Relationships" -> "Love, loss, confusion, and connection. The art of being human."
+        else -> "The quiet ideas and realizations. The things you don’t say out loud."
+    }
+
+    val imageRes = when (space) {
+        "All" -> R.drawable.all
+        "Advice" -> R.drawable.advice
+        "Vent" -> R.drawable.vent
+        "Relationships" -> R.drawable.relationships
+        else -> R.drawable.innerthoughts
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp)
+            .clip(RoundedCornerShape(24.dp))
+    ) {
+        // 1. The Background Image
+        Image(
+            painter = painterResource(id = imageRes),
+            contentDescription = "Background for $space",
+            contentScale = ContentScale.Crop, // Zooms the image to perfectly fill the box
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 2. The Premium Dark Gradient Overlay
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.3f),
+                            Color.Black.copy(alpha = 0.9f)
+                        )
+                    )
+                )
+        )
+
+        // 3. The Text Content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            Text(
+                text = title,
+                style = VoidTypography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = NeonWhite,
+                    letterSpacing = 2.sp
+                )
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = description,
+                style = VoidTypography.bodyLarge.copy(color = NeonWhite.copy(alpha = 0.8f))
+            )
+        }
+    }
+}
+
 @Composable
 fun GlassScrim(visible: Boolean, onDismiss: () -> Unit) {
     AnimatedVisibility(visible = visible, enter = fadeIn(tween(300)), exit = fadeOut(tween(300)), modifier = Modifier.zIndex(3f)) {

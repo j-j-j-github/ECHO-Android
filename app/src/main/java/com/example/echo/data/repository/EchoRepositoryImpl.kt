@@ -40,11 +40,13 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun createEcho(content: String, colorCode: String?) {
+    // ✅ Includes the new Category parameter for the database
+    override suspend fun createEcho(content: String, category: String, colorCode: String?) {
         try {
             val echo = EchoDto(
                 id = UUID.randomUUID().toString(),
                 content = content,
+                category = category,
                 signatureId = SharedPreferencesManager.getInstallationId(context),
                 colorCode = colorCode
             )
@@ -52,13 +54,12 @@ class EchoRepositoryImpl @Inject constructor(
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // UPDATED: Now saves signature_id to enable author-only edits
     override suspend fun createReply(echoId: String, content: String) {
         try {
             val replyMap = mapOf(
                 "echo_id" to echoId,
                 "content" to content,
-                "signature_id" to SharedPreferencesManager.getInstallationId(context) // ✅ Added
+                "signature_id" to SharedPreferencesManager.getInstallationId(context)
             )
             supabase.postgrest["replies"].insert(replyMap)
 
@@ -67,7 +68,6 @@ class EchoRepositoryImpl @Inject constructor(
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // NEW: Implementation for updating Echoes
     override suspend fun updateEcho(echoId: String, newContent: String) {
         try {
             supabase.postgrest["echoes"].update(
@@ -78,7 +78,6 @@ class EchoRepositoryImpl @Inject constructor(
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // NEW: Implementation for updating Resonances
     override suspend fun updateReply(replyId: String, newContent: String) {
         try {
             supabase.postgrest["replies"].update(

@@ -6,7 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.echo.core.utils.SharedPreferencesManager
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.data.remote.dto.NotificationDto
-import com.example.echo.data.repository.EchoRepositoryImpl
+// ✅ Changed to the Interface
+import com.example.echo.domain.repository.EchoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -23,9 +24,19 @@ import kotlin.random.Random
 
 @HiltViewModel
 class VoidViewModel @Inject constructor(
-    private val repository: EchoRepositoryImpl,
+    private val repository: EchoRepository, // ✅ Changed to the Interface
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    // --- NEW: CATEGORY SYSTEM STATE ---
+    val categories = listOf("All", "Advice", "Vent", "Relationships", "Inner Thoughts")
+
+    private val _selectedFeedCategory = MutableStateFlow("All")
+    val selectedFeedCategory: StateFlow<String> = _selectedFeedCategory.asStateFlow()
+
+    fun setFeedCategory(category: String) {
+        _selectedFeedCategory.value = category
+    }
 
     // 1. DATA: Echoes
     private val _echoes = MutableStateFlow<List<EchoDto>>(emptyList())
@@ -192,9 +203,10 @@ class VoidViewModel @Inject constructor(
     }
 
     // --- USER ACTIONS ---
-    fun postEcho(content: String, colorCode: String? = null) {
+    // ✅ NEW: Added category parameter to postEcho
+    fun postEcho(content: String, category: String, colorCode: String? = null) {
         viewModelScope.launch {
-            repository.createEcho(content, colorCode)
+            repository.createEcho(content, category, colorCode)
             delay(500)
             loadFeed()
         }

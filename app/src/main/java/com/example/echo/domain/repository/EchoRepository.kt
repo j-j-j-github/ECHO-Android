@@ -8,7 +8,8 @@ interface EchoRepository {
 
     fun getEchoes(): Flow<List<EchoDto>>
 
-    suspend fun createEcho(content: String, colorCode: String? = null)
+    // ✅ FIXED: Added 'category: String' to match the implementation
+    suspend fun createEcho(content: String, category: String, colorCode: String? = null)
 
     // --- NEW: EDITING METHODS ---
     suspend fun updateEcho(echoId: String, newContent: String)

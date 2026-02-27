@@ -67,7 +67,7 @@ fun ActiveSoulsChip(count: Int) {
     }
 }
 
-// 2. Updated Echo Card (Cleaned Layout for Edited Tags & Icons)
+// 2. Updated Echo Card
 @Composable
 fun EchoCard(
     echoId: String,
@@ -77,6 +77,7 @@ fun EchoCard(
     replies: List<ReplyDto>?,
     signatureId: String? = null,
     colorCode: String? = null,
+    category: String? = null, // ✅ NEW: Accepting Category parameter
     onReport: () -> Unit,
     onEdit: () -> Unit,
     onClick: () -> Unit
@@ -129,7 +130,7 @@ fun EchoCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(220.dp)
+            .height(240.dp) // ✅ Slightly taller to comfortably fit the category tag
             .graphicsLayer { this.alpha = alpha }
             .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
             .clip(RoundedCornerShape(24.dp))
@@ -142,15 +143,42 @@ fun EchoCard(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+
+            // ✅ NEW: CATEGORY FLAIR HEADER
+            if (category != null && category.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .background(
+                            color = if (isCreatorPost) VoidBlack.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = category.uppercase(),
+                        style = VoidTypography.labelSmall.copy(
+                            fontSize = 8.sp,
+                            color = if (isCreatorPost) VoidBlack.copy(alpha = 0.8f) else Stone400,
+                            letterSpacing = 1.sp
+                        )
+                    )
+                }
+            } else {
+                // Spacing buffer if there is no category to keep the grid aligned
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Main Text Content
             Text(
                 text = content,
                 style = VoidTypography.bodyLarge.copy(color = contentTextColor),
-                maxLines = 5,
+                maxLines = 4, // Reduced from 5 to make room for category
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
 
-            // ✅ FOOTER: Stacking Edited tag above the status row
+            // FOOTER
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (updatedAt != null) {
                     Text(
