@@ -46,7 +46,7 @@ class EchoWorker @AssistedInject constructor(
             if (userNotifications.size > lastCount) {
                 notificationManager.showNotification(
                     "The Void Answered",
-                    "Someone has replied to your whisper.",
+                    "Souls have whispered to your Echo.",
                     1002
                 )
                 SharedPreferencesManager.setLastReplyCount(context, userNotifications.size)
@@ -54,9 +54,25 @@ class EchoWorker @AssistedInject constructor(
 
             // 3. Random Engagement Prompt (10% chance)
             if (Random.nextInt(100) < 10) {
+
+                // ✅ PREMIUM DYNAMIC NOTIFICATION LIST
+                val engagementPrompts = listOf(
+                    Pair("The Silence is Loud", "Have something on your mind? Echo it."),
+                    Pair("A Quiet Check-In", "How are you feeling today? The void is listening."),
+                    Pair("Is it feeling too much?", "You don't have to carry it alone. Release it here."),
+                    Pair("End of the Day", "How was your day? Leave your thoughts behind before you rest."),
+                    Pair("A Moment of Pause", "Take a deep breath. What frequency are you on right now?"),
+                    Pair("Weight of the World", "If it's heavy, set it down for a while."),
+                    Pair("Unspoken Words", "What is something you wish you could say out loud?"),
+                    Pair("Seek the Silence", "Find a quiet space and tune into your thoughts.")
+                )
+
+                // Pick a random prompt from the list
+                val randomPrompt = engagementPrompts.random()
+
                 notificationManager.showNotification(
-                    "The Silence is Loud",
-                    "Have something on your mind? Echo it.",
+                    randomPrompt.first, // Title
+                    randomPrompt.second, // Body
                     1003
                 )
             }

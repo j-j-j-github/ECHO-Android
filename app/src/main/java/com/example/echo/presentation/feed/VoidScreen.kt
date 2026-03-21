@@ -1,5 +1,6 @@
 package com.example.echo.presentation.feed
 
+import androidx.compose.ui.draw.shadow
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +47,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -57,8 +58,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,7 +78,8 @@ import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.model.InstallStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.withFrameNanos
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 @Composable
 fun VoidScreen(
@@ -90,34 +93,128 @@ fun VoidScreen(
     val showGetStarted by viewModel.showGetStarted.collectAsStateWithLifecycle()
     val hasUnread by viewModel.hasUnread.collectAsStateWithLifecycle()
 
-    // Frequency States
     val sessionFrequency by viewModel.sessionFrequency.collectAsStateWithLifecycle()
     val showFrequencyModal by viewModel.showFrequencyModal.collectAsStateWithLifecycle()
+    val showJourneyOverlay by viewModel.showJourneyOverlay.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    // ✅ 1. NEW SNACKBAR & UPDATE MANAGER STATE
     val snackbarHostState = remember { SnackbarHostState() }
     val appUpdateManager = remember { AppUpdateManagerFactory.create(context) }
 
-    // ✅ UPDATE LAUNCHER: Handles the result from the Play Store pop-up
-    val updateLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode != Activity.RESULT_OK) {
-            // User cancelled the update or it failed.
+    val showRatePopup by viewModel.showRatePopup.collectAsStateWithLifecycle()
+    val manager = remember { com.google.android.play.core.review.ReviewManagerFactory.create(context) }
+
+    // --- AESTHETIC TIME-AWARE GREETING & MOOD ENGINE ---
+    val currentHour = java.time.LocalTime.now().hour
+    val rawName = viewModel.displayName.collectAsStateWithLifecycle().value
+    val justName = if (rawName.isNullOrBlank()) "soul" else rawName!!
+
+// We use mutableStateOf so the UI redraws every time the timer updates this variable
+    var displayMessage by remember { mutableStateOf<Pair<String, String>>(Pair("Welcome back,", "$justName.")) }
+
+// Loop that changes the message every 15 seconds based on the active mood
+    LaunchedEffect(sessionFrequency, currentHour, justName) {
+        while (true) {
+            val greetings = when (currentHour) {
+                in 5..11 -> listOf(Pair("Good morning,", "$justName."), Pair("A new dawn,", "$justName."))
+                in 12..17 -> listOf(Pair("Good afternoon,", "$justName."), Pair("Mid-day reflections,", "$justName."))
+                in 18..21 -> listOf(Pair("Good evening,", "$justName."), Pair("The day slows down,", "$justName."))
+                else -> listOf(Pair("Welcome back,", "$justName."), Pair("Into the night,", "$justName."))
+            }
+
+            val moodHooks = when (sessionFrequency) {
+                0 -> listOf(
+                    Pair("Let it all out,", "$justName."),
+                    Pair("Release the noise,", "$justName."),
+                    Pair("Shout into the void,", "$justName."),
+                    Pair("It's okay to break,", "$justName."),
+                    Pair("Give your anger a voice,", "$justName."),
+                    Pair("What's tearing at you,", "$justName?")
+                )
+                1 -> listOf(
+                    Pair("Unburden your mind,", "$justName."),
+                    Pair("Rest your thoughts here,", "$justName."),
+                    Pair("Breathe through it,", "$justName."),
+                    Pair("Lay your armor down,", "$justName."),
+                    Pair("It's safe to be tired,", "$justName."),
+                    Pair("What weighs on your heart,", "$justName?")
+                )
+                3 -> listOf(
+                    Pair("Share your peace,", "$justName."),
+                    Pair("A quiet moment,", "$justName."),
+                    Pair("Embrace the stillness,", "$justName."),
+                    Pair("The storm has passed,", "$justName."),
+                    Pair("Find your center,", "$justName."),
+                    Pair("Let time slow down,", "$justName.")
+                )
+                4 -> listOf(
+                    Pair("Guide someone today,", "$justName."),
+                    Pair("Share your light,", "$justName."),
+                    Pair("What excites you,", "$justName?"),
+                    Pair("Let your joy spill over,", "$justName."),
+                    Pair("A beautiful frequency,", "$justName."),
+                    Pair("Celebrate this moment,", "$justName.")
+                )
+                else -> when (currentHour) { // NEUTRAL falls back to time-based introspection
+                    in 5..11 -> listOf(Pair("How are you feeling today,", "$justName?"), Pair("Start with a whisper,", "$justName."))
+                    in 12..17 -> listOf(Pair("Taking a breath,", "$justName?"), Pair("Where is your mind drifting,", "$justName?"))
+                    in 18..21 -> listOf(Pair("Reflecting on the day,", "$justName?"), Pair("Let the day go,", "$justName."))
+                    else -> listOf(Pair("What keeps you awake,", "$justName?"), Pair("Unburden your soul,", "$justName."))
+                }
+            }
+
+            // 20% chance for a Time Greeting, 80% chance for an Empathetic Mood Hook
+            displayMessage = if (Math.random() > 0.8) greetings.random() else moodHooks.random()
+
+            // Wait 15 seconds before picking a new phrase
+            delay(30000L)
         }
     }
 
-    // ✅ 2. MODIFIED CHECK FOR UPDATES: Includes the Snackbar listener
+// STRICT 5-MOOD SYSTEM
+    val currentMoodName = when (sessionFrequency) {
+        0 -> "DISTURBED"
+        1 -> "HEAVY"
+        3 -> "CALM"
+        4 -> "RADIANT"
+        else -> "NEUTRAL"
+    }
+
+// Trigger the mood message *every* time the modal closes
+    var showMoodMessage by remember { mutableStateOf(false) }
+    LaunchedEffect(showFrequencyModal) {
+        if (!showFrequencyModal) {
+            showMoodMessage = true
+            delay(3500) // Hold for 3.5 seconds
+            showMoodMessage = false // Fade to displayMessage
+        }
+    }
+
+    LaunchedEffect(showRatePopup) {
+        if (showRatePopup) {
+            val request = manager.requestReviewFlow()
+            request.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val reviewInfo = task.result
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        manager.launchReviewFlow(activity, reviewInfo)
+                    }
+                }
+                viewModel.resetRateTrigger()
+            }
+        }
+    }
+
+    val updateLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result -> }
+
     LaunchedEffect(Unit) {
         val activity = context as? Activity
         if (activity != null) {
-            // Trigger the initial check/popup
             viewModel.triggerUpdateFlow(activity, updateLauncher)
-
-            // Listen for Flexible Update download completion
             appUpdateManager.registerListener { state ->
                 if (state.installStatus() == InstallStatus.DOWNLOADED) {
                     scope.launch {
@@ -135,24 +232,19 @@ fun VoidScreen(
         }
     }
 
-    // ✅ STRICT CHAINED LOGIC: Frequency Modal ONLY triggers if GetStarted is false (completed)
     LaunchedEffect(showGetStarted) {
         if (!showGetStarted) {
-            delay(600) // Wait for GetStarted to fully exit
+            delay(600)
             viewModel.openFrequencyModal()
         }
     }
 
     val categories = viewModel.categories
     val selectedFeedCategory by viewModel.selectedFeedCategory.collectAsStateWithLifecycle()
-
-    // ✅ AUTO-SCROLL CATEGORY CHIPS: Keeps the active space visible in the top bar
     val categoryListState = rememberLazyListState()
     LaunchedEffect(selectedFeedCategory) {
         val index = categories.indexOf(selectedFeedCategory)
-        if (index != -1) {
-            categoryListState.animateScrollToItem(index)
-        }
+        if (index != -1) categoryListState.animateScrollToItem(index)
     }
 
     val filteredEchoes = remember(echoes, selectedFeedCategory) {
@@ -160,6 +252,7 @@ fun VoidScreen(
     }
 
     val deepLinkEcho by viewModel.deepLinkEcho.collectAsStateWithLifecycle()
+
     var editingEchoId by remember { mutableStateOf<String?>(null) }
     var editingInitialText by remember { mutableStateOf("") }
     var showWhisper by remember { mutableStateOf(false) }
@@ -167,6 +260,14 @@ fun VoidScreen(
 
     val listState = rememberLazyGridState()
     var selectedEchoId by remember { mutableStateOf<String?>(null) }
+
+    // ✅ FORCE OPEN THE POST
+    LaunchedEffect(deepLinkEcho) {
+        deepLinkEcho?.let { echo ->
+            selectedEchoId = echo.id
+            viewModel.consumeDeepLink()
+        }
+    }
 
     val selectedEcho = remember(filteredEchoes, selectedEchoId, deepLinkEcho) {
         filteredEchoes.find { it.id == selectedEchoId } ?: deepLinkEcho?.takeIf { it.id == selectedEchoId }
@@ -180,14 +281,13 @@ fun VoidScreen(
 
     val haptic = LocalHapticFeedback.current
 
-    // ✅ SESSION COLOR: Solid vibrant color for the new frequency icon
     val sessionColor by animateColorAsState(
         targetValue = when(sessionFrequency) {
-            0 -> Color(0xFFFF453A) // Disturbed
-            1 -> Color(0xFFFF9F0A) // Heavy
-            2 -> Color(0xFF94A3B8) // Neutral
-            3 -> Color(0xFF64D2FF) // Calm
-            4 -> Color(0xFF34C759) // Radiant
+            0 -> Color(0xFFFF453A)
+            1 -> Color(0xFFFF9F0A)
+            2 -> Color(0xFF94A3B8)
+            3 -> Color(0xFF64D2FF)
+            4 -> Color(0xFF34C759)
             else -> Color(0xFF94A3B8)
         },
         animationSpec = tween(1000), label = "sessionColor"
@@ -217,8 +317,9 @@ fun VoidScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = isPanelOpen || showWhisper || showAbout || selectedEchoId != null || echoToReport != null || showGetStarted || showFrequencyModal) {
+    BackHandler(enabled = isPanelOpen || showWhisper || showAbout || selectedEchoId != null || echoToReport != null || showGetStarted || showFrequencyModal || showJourneyOverlay) {
         when {
+            showJourneyOverlay -> viewModel.closeJourneyOverlay()
             showFrequencyModal -> viewModel.dismissFrequencyModal()
             echoToReport != null -> echoToReport = null
             selectedEchoId != null -> { selectedEchoId = null; viewModel.loadFeed() }
@@ -228,7 +329,7 @@ fun VoidScreen(
         }
     }
 
-    val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted || showFrequencyModal
+    val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted || showFrequencyModal || showJourneyOverlay
     val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 8.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
     val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.6f else 0f, label = "dimAlpha", animationSpec = tween(400))
 
@@ -356,9 +457,107 @@ fun VoidScreen(
                     }
                 }
 
+                // Aesthetic Gradient Divider
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 0.dp)
+                        .height(1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.45f),
+                                    Color.White.copy(alpha = 0.45f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                // --- ELEGANT LEFT-ALIGNED GREETING (WITH CROSSFADE) ---
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // ✅ THE FIX: We reduced the outer start padding from 20.dp down to 8.dp.
+                        // This makes the "animation camera lens" much wider on the left.
+                        .padding(start = 8.dp, end = 20.dp, top = 12.dp, bottom = 12.dp)
+                        .height(72.dp) // Fixed height prevents layout jumping
+                        .zIndex(2f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Crossfade(
+                        targetState = showMoodMessage,
+                        animationSpec = tween(durationMillis = 1200), // Very slow, cinematic 1.2-second dissolve
+                        label = "GreetingFade"
+                    ) { isShowingMood ->
+                        if (isShowingMood) {
+                            // ✅ THE FIX: We push the text 12.dp back to the right on the INSIDE.
+                            // 8.dp (outer) + 12.dp (inner) = 20.dp. It aligns perfectly with your UI,
+                            // but now has 12.dp of pure, un-clippable safe space on the left!
+                            Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp)) {
+                                Text(
+                                    text = "Frequency set to", // Removed manual spaces
+                                    style = TextStyle(
+                                        fontFamily = FontFamily.Serif,
+                                        fontSize = 20.sp,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$currentMoodName, $justName.", // Removed manual spaces
+                                    style = TextStyle(
+                                        fontFamily = FontFamily.Serif,
+                                        fontSize = 28.sp,
+                                        color = sessionColor, // Glows with the selected mood
+                                        fontWeight = FontWeight.Light,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                    )
+                                )
+                            }
+                        } else {
+                            AnimatedContent(
+                                targetState = displayMessage,
+                                transitionSpec = {
+                                    fadeIn(tween(800)) togetherWith fadeOut(tween(800))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.CenterStart,
+                                label = "HookFade"
+                            ) { currentMessage ->
+                                // ✅ Same here: We push the text 12.dp to the right inside the animation
+                                Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp)) {
+                                    Text(
+                                        text = currentMessage.first.toString(), // Removed manual spaces
+                                        style = TextStyle(
+                                            fontFamily = FontFamily.Serif,
+                                            fontSize = 20.sp,
+                                            color = Color.White.copy(alpha = 0.5f),
+                                            fontWeight = FontWeight.Normal
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = currentMessage.second.toString(), // Removed manual spaces
+                                        style = TextStyle(
+                                            fontFamily = FontFamily.Serif,
+                                            fontSize = 28.sp,
+                                            color = NeonWhite,
+                                            fontWeight = FontWeight.Light,
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Spaces Filter
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).zIndex(2f)
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).zIndex(2f)
                 ) {
                     LazyRow(
                         state = categoryListState,
@@ -450,10 +649,20 @@ fun VoidScreen(
                     ) { currentCategory ->
                         val animatingEchoes = if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
 
+                        val now = Instant.now()
+                        val sixHoursAgo = now.minus(6, ChronoUnit.HOURS)
+
+                        val recentEchoes = animatingEchoes.filter {
+                            try { Instant.parse(it.createdAt).isAfter(sixHoursAgo) } catch (e: Exception) { false }
+                        }
+                        val olderEchoes = animatingEchoes.filter {
+                            try { Instant.parse(it.createdAt).isBefore(sixHoursAgo) } catch (e: Exception) { true }
+                        }
+
                         LazyVerticalGrid(
                             state = listState,
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -466,40 +675,63 @@ fun VoidScreen(
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = "THIS SPACE IS QUIET.",
-                                                style = VoidTypography.labelSmall.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp,
-                                                    color = com.example.echo.core.theme.Stone600,
-                                                    letterSpacing = 2.sp
-                                                )
+                                                style = VoidTypography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Stone400, letterSpacing = 2.sp)
                                             )
                                             Spacer(modifier = Modifier.height(12.dp))
                                             Text(
                                                 text = "Be the first to Echo.",
-                                                style = VoidTypography.bodyLarge.copy(fontSize = 12.sp, color = com.example.echo.core.theme.Stone600)
+                                                style = VoidTypography.bodyLarge.copy(fontSize = 12.sp, color = Stone400)
                                             )
                                         }
                                     }
                                 }
                             } else {
-                                items(items = animatingEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
-                                    EchoCard(
-                                        echoId = echo.id ?: "",
-                                        content = echo.content,
-                                        createdAt = echo.createdAt,
-                                        updatedAt = echo.updatedAt,
-                                        colorCode = echo.colorCode,
-                                        signatureId = echo.signatureId,
-                                        category = echo.category,
-                                        replies = echo.replies,
-                                        onReport = { echoToReport = echo },
-                                        onEdit = {
-                                            editingEchoId = echo.id
-                                            editingInitialText = echo.content
-                                            showWhisper = true
-                                        },
-                                        onClick = { selectedEchoId = echo.id }
-                                    )
+                                // 1. RECENT ECHOES SECTION
+                                if (recentEchoes.isNotEmpty()) {
+                                    item(span = { GridItemSpan(2) }) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "RECENT",
+                                                style = VoidTypography.labelSmall.copy(color = NeonWhite, fontSize = 10.sp, letterSpacing = 4.sp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Box(modifier = Modifier.width(24.dp).height(1.dp).background(Color.White.copy(alpha = 0.3f)))
+                                        }
+                                    }
+                                    items(items = recentEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
+                                        EchoCard(
+                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
+                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                            onClick = { selectedEchoId = echo.id }
+                                        )
+                                    }
+                                }
+
+                                // 2. OLDER ECHOES SECTION
+                                if (olderEchoes.isNotEmpty()) {
+                                    item(span = { GridItemSpan(2) }) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "OLDER",
+                                                style = VoidTypography.labelSmall.copy(color = Stone400, fontSize = 10.sp, letterSpacing = 4.sp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Box(modifier = Modifier.width(24.dp).height(1.dp).background(Color(0xFF78716C)))
+                                        }
+                                    }
+                                    items(items = olderEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
+                                        EchoCard(
+                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
+                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                            onClick = { selectedEchoId = echo.id }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -507,56 +739,83 @@ fun VoidScreen(
                 }
             }
 
-            // The Dark Fade Gradient
+            // The Dark Fade Gradient MUST be behind the buttons!
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(180.dp)
-                    .zIndex(1.5f)
+                    .zIndex(1.5f) // Put gradient at 1.5
                     .background(Brush.verticalGradient(listOf(Color.Transparent, VoidBlack.copy(alpha = 0.95f))))
             )
 
-            // PREMIUM CONSOLE CLUSTER
-            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp).zIndex(2f)) {
-                Surface(color = NeonWhite, shape = RoundedCornerShape(32.dp), shadowElevation = 12.dp) {
-                    Row(modifier = Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-
-                        // ✅ DYNAMIC FREQUENCY ICON (Mood Colored Waveform)
-                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).clickable {
+            // DASHBOARD
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .zIndex(2f), // Put buttons HIGHER than gradient (2.0)
+                contentAlignment = Alignment.Center
+            ) {
+                // 1. LEFT DIAL: Frequency
+                Box(
+                    modifier = Modifier
+                        .offset(x = (-64).dp, y = 16.dp) // Closer to center (-64 instead of -80)
+                        .size(52.dp)
+                        .shadow(elevation = 12.dp, shape = CircleShape)
+                        .background(color = Color.White, shape = CircleShape)
+                        .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.openFrequencyModal()
-                        }, contentAlignment = Alignment.Center) {
-                            Canvas(modifier = Modifier.size(24.dp)) {
-                                val strokeWidth = 2.5.dp.toPx()
-                                val gap = size.width / 4
-                                val heights = listOf(0.4f, 0.8f, 1.0f, 0.6f, 0.4f) // Waveform pattern
-
-                                heights.forEachIndexed { index, heightMultiplier ->
-                                    val x = index * gap
-                                    val barHeight = size.height * heightMultiplier
-                                    val shrinkAmount = (size.height - barHeight) / 2
-
-                                    drawLine(
-                                        color = sessionColor, // Uses the solid active mood color
-                                        start = Offset(x, shrinkAmount),
-                                        end = Offset(x, size.height - shrinkAmount),
-                                        strokeWidth = strokeWidth,
-                                        cap = StrokeCap.Round
-                                    )
-                                }
-                            }
-                        }
-
-                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(VoidBlack.copy(alpha = 0.1f)))
-
-                        // 2. WHISPER ICON
-                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).clickable {
-                            editingEchoId = null; editingInitialText = ""; showWhisper = true
-                        }, contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Add, "Whisper", tint = VoidBlack, modifier = Modifier.size(28.dp))
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(22.dp)) {
+                        val strokeWidth = 3.dp.toPx()
+                        val gap = size.width / 4
+                        val heights = listOf(0.4f, 0.8f, 1.0f, 0.6f, 0.4f)
+                        heights.forEachIndexed { index, heightMultiplier ->
+                            val x = index * gap
+                            val barHeight = size.height * heightMultiplier
+                            val shrinkAmount = (size.height - barHeight) / 2
+                            drawLine(color = sessionColor, start = Offset(x, shrinkAmount), end = Offset(x, size.height - shrinkAmount), strokeWidth = strokeWidth, cap = StrokeCap.Round)
                         }
                     }
+                }
+
+                // 2. RIGHT DIAL: Journey Analytics
+                Box(
+                    modifier = Modifier
+                        .offset(x = 64.dp, y = 16.dp) // Closer to center (64 instead of 80)
+                        .size(52.dp)
+                        .shadow(elevation = 12.dp, shape = CircleShape)
+                        .background(color = Color.White, shape = CircleShape)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.toggleJourneyOverlay()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = Icons.Outlined.Person, contentDescription = "Journey", tint = Color.Black, modifier = Modifier.size(26.dp))
+                }
+
+                // 3. CENTER DIAL: The Whisper Button
+                Box(
+                    modifier = Modifier
+                        .offset(y = (-12).dp)
+                        .size(72.dp)
+                        .shadow(elevation = 20.dp, shape = CircleShape)
+                        .background(color = Color.White, shape = CircleShape)
+                        .clickable {
+                            editingEchoId = null
+                            editingInitialText = ""
+                            showWhisper = true
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Whisper", tint = Color.Black, modifier = Modifier.size(36.dp))
                 }
             }
 
@@ -567,22 +826,8 @@ fun VoidScreen(
         }
 
         // --- OVERLAYS ---
-
-        // ✅ 3. ADDED SNACKBAR HOST: floats above bottom cluster
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 120.dp)
-                .zIndex(100f)
-        ) { data ->
-            Snackbar(
-                containerColor = NeonWhite,
-                contentColor = VoidBlack,
-                actionColor = Color(0xFFFF453A), // VoidRed
-                snackbarData = data,
-                shape = RoundedCornerShape(16.dp)
-            )
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp).zIndex(100f)) { data ->
+            Snackbar(containerColor = NeonWhite, contentColor = VoidBlack, actionColor = Color(0xFFFF453A), snackbarData = data, shape = RoundedCornerShape(16.dp))
         }
 
         GlassScrim(visible = isPanelOpen, onDismiss = { viewModel.closeNotificationPanel(); viewModel.loadFeed() })
@@ -606,7 +851,6 @@ fun VoidScreen(
 
         GlassScrim(visible = selectedEchoId != null, onDismiss = { selectedEchoId = null; viewModel.loadFeed() })
         AnimatedVisibility(visible = selectedEchoId != null, enter = fadeIn() + scaleIn(initialScale = 0.9f), exit = fadeOut() + scaleOut(targetScale = 0.9f), modifier = Modifier.fillMaxSize().zIndex(6f)) {
-            // ✅ BLUR REMOVED FROM OVERLAY BOX
             Box(modifier = Modifier.fillMaxSize()) {
                 cachedEcho?.let { echo ->
                     DetailOverlay(echo = echo, onDismiss = { selectedEchoId = null; viewModel.loadFeed() },
@@ -616,6 +860,27 @@ fun VoidScreen(
                         onReport = { echoToReport = echo })
                 }
             }
+        }
+
+        GlassScrim(visible = showJourneyOverlay, onDismiss = { viewModel.closeJourneyOverlay() })
+        AnimatedVisibility(
+            visible = showJourneyOverlay,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
+        ) {
+            JourneyOverlay(
+                stats = viewModel.userStats.collectAsState().value,
+                userEchoes = viewModel.echoes.collectAsState().value.filter { it.signatureId == viewModel.getUserId() },
+                dominantMood = viewModel.dominantMood.collectAsState().value,
+                activityStreak = viewModel.activityStreak.collectAsState().value,
+                userName = viewModel.displayName.collectAsState().value,
+                userSignatureId = viewModel.getUserId(),
+                onUpdateName = { newName -> viewModel.updateDisplayName(newName) },
+                onRestoreIdentity = { newId -> viewModel.restoreIdentity(newId) },
+                onDismiss = { viewModel.closeJourneyOverlay() },
+                onApplyEchoPlus = { email -> viewModel.submitEchoPlusApplication(email) }
+            )
         }
 
         AnimatedVisibility(visible = echoToReport != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.zIndex(10f)) {
@@ -633,7 +898,6 @@ fun VoidScreen(
             ReportSuccessOverlay(onDismiss = { showReportSuccess = false; echoToReport = null; selectedEchoId = null })
         }
 
-        // ✅ FINAL TOP-LEVEL MODAL (Slide animation handled inside component)
         FrequencyModal(
             modifier = Modifier.zIndex(100f),
             isVisible = showFrequencyModal && !showGetStarted,

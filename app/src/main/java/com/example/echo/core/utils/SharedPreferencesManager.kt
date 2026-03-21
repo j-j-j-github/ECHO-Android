@@ -107,4 +107,26 @@ object SharedPreferencesManager {
     fun setLastReplyCount(context: Context, count: Int) {
         getPrefs(context).edit().putInt(KEY_LAST_REPLY_COUNT, count).apply()
     }
+
+    fun saveInstallationId(context: Context, newId: String) {
+        getPrefs(context).edit().putString(KEY_INSTALLATION_ID, newId).apply()
+    }
+
+    // --- CLEAR LOCAL DATA ON IDENTITY SWITCH ---
+    fun clearUserLocalCache(context: Context) {
+        // Clears the green ticks for replied echoes
+        getPrefs(context).edit().remove(KEY_REPLIED_ECHOES).apply()
+        // Clears the red dot notification counters
+        context.getSharedPreferences(PREF_NOTIF_COUNTS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    fun saveLastFrequencyTime(context: Context, time: Long) {
+        val prefs = context.getSharedPreferences("echo_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putLong("last_frequency_time", time).apply()
+    }
+
+    fun getLastFrequencyTime(context: Context): Long {
+        val prefs = context.getSharedPreferences("echo_prefs", Context.MODE_PRIVATE)
+        return prefs.getLong("last_frequency_time", 0L)
+    }
 }

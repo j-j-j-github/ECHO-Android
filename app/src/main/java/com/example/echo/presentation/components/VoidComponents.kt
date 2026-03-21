@@ -18,12 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush // ✅ Required for gradients
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight // ✅ ADDED MISSING IMPORT
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
@@ -98,7 +98,7 @@ fun EchoCard(
     val isEditable = remember(createdAt) { TimeUtils.canEdit(createdAt) }
     val showEditButton = isOwner && isEditable
 
-    // ✅ SUPER USER LOGIC: Based entirely on colorCode since content string stripped the tags
+    // ✅ SUPER USER LOGIC
     val upperColor = colorCode?.uppercase() ?: ""
     val isCreator = upperColor == "#FFFFFF"
     val isAlert = upperColor == "#FF453A"
@@ -114,45 +114,55 @@ fun EchoCard(
         else -> Stone900.copy(alpha = 0.2f)
     }
 
-    // --- DYNAMIC STYLING LOGIC ---
-    val surfaceColor = if (isSuperUser) {
-        cardColor.copy(alpha = if (isCreator) 0.95f else 0.15f)
+    // --- NEW: FIXED PREMIUM LIGHT GRADIENT ---
+    val surfaceBrush = if (isSuperUser) {
+        Brush.verticalGradient(
+            listOf(
+                cardColor.copy(alpha = if (isCreator) 0.95f else 0.25f),
+                cardColor.copy(alpha = if (isCreator) 0.85f else 0.05f)
+            )
+        )
     } else {
-        if (colorCode != null) {
-            Color(android.graphics.Color.parseColor(colorCode)).copy(alpha = 0.15f)
-        } else Stone900.copy(alpha = 0.2f)
+        // Universal elegant glare from the top, fading into the Void
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.08f), // Premium light from top
+                Color.Transparent                // Fades into the background
+            )
+        )
     }
 
     val borderColor = if (isSuperUser) {
         cardColor.copy(alpha = if(isCreator) 1f else 0.6f)
     } else {
-        if (colorCode != null) {
-            Color(android.graphics.Color.parseColor(colorCode)).copy(alpha = 0.6f)
-        } else Stone800.copy(alpha = 0.4f)
+        if (colorCode != null) cardColor.copy(alpha = 0.4f) else Stone800.copy(alpha = 0.3f)
     }
 
     val contentTextColor = if (isCreator) VoidBlack else NeonWhite
     val subTextColor = if (isCreator) VoidBlack.copy(alpha = 0.6f) else NeonWhite.copy(alpha = 0.5f)
 
-    // Visual Effects (Blur & Alpha)
+    // --- EXPIRY LOGIC (Blur removed, Timer highlighted) ---
     val hoursLeftNumeric = remember(timeObj) {
         val deathTime = timeObj.plus(Duration.ofHours(48))
         Duration.between(Instant.now(), deathTime).toHours()
     }
     val timeLeftString = TimeUtils.getTimeLeftShort(timeObj)
-    val alpha = if (hoursLeftNumeric > 12) 1f else (hoursLeftNumeric / 12f).coerceIn(0.5f, 1f)
-    val blurRadius = if (hoursLeftNumeric < 12 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        ((12 - hoursLeftNumeric) * 0.2).dp
-    } else 0.dp
+
+    // Smooth fade out at the very end, but NO BLUR
+    // If more than 6 hours left, stay fully visible (1f)
+// If under 6 hours, fade down based on remaining time (using 6f as the divisor)
+    val alpha = if (hoursLeftNumeric > 6) 1f else (hoursLeftNumeric / 6f).coerceIn(0.5f, 1f)
+
+// Correct: Red timer starts at the 6-hour mark
+    val isExpiringSoon = hoursLeftNumeric < 6
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(240.dp)
             .graphicsLayer { this.alpha = alpha }
-            .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
             .clip(RoundedCornerShape(24.dp))
-            .background(surfaceColor)
+            .background(surfaceBrush) // ✅ Fixed universal light gradient applied here
             .border(1.dp, borderColor, RoundedCornerShape(24.dp))
             .clickable { onClick() }
             .padding(24.dp)
@@ -168,7 +178,7 @@ fun EchoCard(
                     modifier = Modifier
                         .padding(bottom = 12.dp)
                         .background(
-                            color = if (isCreator) VoidBlack.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.08f),
+                            color = if (isCreator) VoidBlack.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.06f),
                             shape = RoundedCornerShape(8.dp)
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -230,14 +240,17 @@ fun EchoCard(
                                 Spacer(modifier = Modifier.width(6.dp))
                             }
 
+                            // ✅ TIMER LOGIC: Turns Red when expiring soon
                             Text(
                                 text = timeLeftString.uppercase(),
                                 style = VoidTypography.labelSmall.copy(
                                     color = when {
                                         timeLeftString == "Expired" -> VoidRed
+                                        isExpiringSoon -> VoidRed // Turns Red under 12 hours
                                         isCreator -> VoidBlack.copy(alpha = 0.7f)
                                         else -> subTextColor
-                                    }
+                                    },
+                                    fontWeight = if (isExpiringSoon) FontWeight.Bold else FontWeight.Normal
                                 )
                             )
                         }

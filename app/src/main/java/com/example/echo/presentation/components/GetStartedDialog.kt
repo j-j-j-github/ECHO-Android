@@ -2,10 +2,10 @@ package com.example.echo.presentation.components
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,14 +18,16 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider // Added
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity // Added
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -33,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Density // Added
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
@@ -57,22 +59,32 @@ fun GetStartedDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()), // Added scroll safety for tiny screens
+                .padding(horizontal = 24.dp, vertical = 40.dp)
+                // Block background taps
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
             contentAlignment = Alignment.Center
         ) {
-            Card(
+            // --- PREMIUM LOCKED WINDOW WRAPPER ---
+            Box(
                 modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0A0A0A)),
-                border = BorderStroke(1.dp, Stone800.copy(alpha = 0.5f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(VoidBlack)
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(32.dp))
             ) {
+                // Elegant Top Glass Gradient
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .background(Brush.verticalGradient(listOf(Color.White.copy(0.08f), Color.Transparent)))
+                )
+
                 Column(
                     modifier = Modifier
                         .padding(32.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Header
@@ -91,7 +103,7 @@ fun GetStartedDialog(
                         text = "SEEK THE SILENCE",
                         style = VoidTypography.labelSmall.copy(
                             letterSpacing = 3.sp,
-                            color = Stone400
+                            color = Color.White.copy(alpha = 0.5f)
                         ),
                         maxLines = 1,
                         softWrap = false
@@ -103,8 +115,8 @@ fun GetStartedDialog(
                         text = "INITIATING PROTOCOL 48",
                         style = VoidTypography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 14.sp,
-                            letterSpacing = 2.sp,
+                            fontSize = 12.sp,
+                            letterSpacing = 4.sp,
                             color = NeonWhite
                         ),
                         maxLines = 1,
@@ -137,22 +149,24 @@ fun GetStartedDialog(
 
                     Spacer(modifier = Modifier.height(56.dp))
 
-                    // Enter Button
-                    Button(
-                        onClick = onEnterClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, Stone600),
+                    // --- PREMIUM WHITE GLASS BUTTON ---
+                    Box(
                         modifier = Modifier
-                            .height(50.dp)
-                            .fillMaxWidth(0.8f)
+                            .fillMaxWidth(0.85f)
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.85f))))
+                            .border(1.dp, Color.White, RoundedCornerShape(16.dp))
+                            .clickable { onEnterClick() },
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             "ENTER THE VOID",
                             style = VoidTypography.labelSmall.copy(
                                 fontSize = 12.sp,
-                                letterSpacing = 3.sp,
-                                color = NeonWhite
+                                letterSpacing = 4.sp,
+                                color = VoidBlack,
+                                fontWeight = FontWeight.Black
                             ),
                             maxLines = 1,
                             softWrap = false
@@ -171,7 +185,7 @@ fun GetStartedDialog(
                         withStyle(
                             style = SpanStyle(
                                 textDecoration = TextDecoration.Underline,
-                                color = Stone400
+                                color = Color.White.copy(alpha = 0.6f)
                             )
                         ) {
                             append("protocol_terms")
@@ -185,7 +199,7 @@ fun GetStartedDialog(
                         withStyle(
                             style = SpanStyle(
                                 textDecoration = TextDecoration.Underline,
-                                color = Stone400
+                                color = Color.White.copy(alpha = 0.6f)
                             )
                         ) {
                             append("privacy_directives")
@@ -197,7 +211,7 @@ fun GetStartedDialog(
                         text = annotatedString,
                         style = VoidTypography.labelSmall.copy(
                             fontSize = 9.sp,
-                            color = Stone600,
+                            color = Color.White.copy(alpha = 0.3f),
                             textAlign = TextAlign.Center,
                             lineHeight = 16.sp,
                             fontFamily = FontFamily.Monospace
@@ -207,14 +221,12 @@ fun GetStartedDialog(
                                 tag = "terms",
                                 start = offset,
                                 end = offset
-                            )
-                                .firstOrNull()?.let { openLink(it.item) }
+                            ).firstOrNull()?.let { openLink(it.item) }
                             annotatedString.getStringAnnotations(
                                 tag = "privacy",
                                 start = offset,
                                 end = offset
-                            )
-                                .firstOrNull()?.let { openLink(it.item) }
+                            ).firstOrNull()?.let { openLink(it.item) }
                         }
                     )
                 }
@@ -229,19 +241,20 @@ fun FeatureItem(icon: ImageVector, title: String, desc: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(85.dp)
     ) {
+        // Elegant Glass Ring Icon
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(Stone900.copy(alpha = 0.5f))
-                .border(BorderStroke(1.dp, Stone800), CircleShape),
+                .background(Color.White.copy(alpha = 0.05f))
+                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Stone400,
-                modifier = Modifier.size(18.dp)
+                tint = NeonWhite,
+                modifier = Modifier.size(20.dp)
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -250,7 +263,7 @@ fun FeatureItem(icon: ImageVector, title: String, desc: String) {
             style = VoidTypography.labelSmall.copy(
                 fontSize = 9.sp,
                 letterSpacing = 1.sp,
-                color = Stone400
+                color = Color.White.copy(alpha = 0.8f)
             ),
             maxLines = 1,
             softWrap = false
@@ -261,11 +274,9 @@ fun FeatureItem(icon: ImageVector, title: String, desc: String) {
             style = VoidTypography.bodyLarge.copy(
                 fontSize = 9.sp,
                 lineHeight = 12.sp,
-                color = Stone600,
+                color = Color.White.copy(alpha = 0.4f),
                 textAlign = TextAlign.Center
             )
-            // Note: Description is intentionally allowed to wrap (no maxLines),
-            // but the font size is locked so it won't overflow the box.
         )
     }
 }

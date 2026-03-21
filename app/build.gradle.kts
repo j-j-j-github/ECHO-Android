@@ -15,8 +15,8 @@ android {
         applicationId = "com.j3labs.echo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.2.1"
+        versionCode = 8
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -32,7 +32,9 @@ android {
                 "proguard-rules.pro"
             )
         }
-    }
+
+
+}
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -64,6 +66,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("androidx.hilt:hilt-work:1.1.0")
     ksp("androidx.hilt:hilt-compiler:1.1.0")
+    implementation("com.google.android.play:review:2.0.1")
+    implementation("com.google.android.play:review-ktx:2.0.1")
 
     // Google Fonts
     implementation("androidx.compose.ui:ui-text-google-fonts:1.7.0")

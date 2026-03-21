@@ -2,6 +2,8 @@ package com.example.echo.domain.repository
 
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.data.remote.dto.NotificationDto
+import com.example.echo.data.remote.dto.UserStatsDto
+import com.example.echo.data.remote.dto.MoodHistoryDto
 import kotlinx.coroutines.flow.Flow
 
 interface EchoRepository {
@@ -27,4 +29,15 @@ interface EchoRepository {
     suspend fun hasUnreadNotifications(): Boolean
 
     fun markNotificationsAsRead()
+
+    // --- NEW: JOURNEY & ANALYTICS ---
+    suspend fun getUserStats(): UserStatsDto?
+
+    suspend fun submitLead(email: String, signatureId: String)
+
+    suspend fun getMoodHistory(): List<MoodHistoryDto>
+
+    suspend fun checkIfUserExists(signatureId: String): Boolean
+
+    suspend fun updateUserDisplayName(newName: String): Boolean
 }

@@ -1,8 +1,8 @@
 package com.example.echo.presentation.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,64 +12,69 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.echo.core.theme.NeonWhite
-import com.example.echo.core.theme.Stone300
-import com.example.echo.core.theme.Stone800
-import com.example.echo.core.theme.VoidTypography
+import com.example.echo.core.theme.*
 
-// Renamed colors to avoid conflict
-val ReportBg = Color(0xFF3E1F1F)
-val ReportAccent = Color(0xFFFF4D4D)
+// Using your app's standard VoidRed for the destructive action
+val ReportAccent = Color(0xFFFF453A)
 
 @Composable
 fun ReportDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    // Just the Card content (Sharp)
-    // The blur and scrim are handled by the parent (VoidScreen)
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Card(
+        // --- PREMIUM LOCKED WINDOW ---
+        Box(
             modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0A0A0A)),
-            border = BorderStroke(1.dp, Stone800.copy(alpha = 0.5f))
+                .fillMaxWidth(0.88f) // Keeps it tight and centered
+                .clip(RoundedCornerShape(32.dp))
+                .background(VoidBlack)
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(32.dp))
         ) {
+            // Elegant Top Glass Gradient
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(0.06f), Color.Transparent)))
+            )
+
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier.padding(28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Icon Circle
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .background(ReportBg, CircleShape)
+                        .size(56.dp)
+                        .background(ReportAccent.copy(alpha = 0.08f), CircleShape)
                         .border(1.dp, ReportAccent.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Outlined.PriorityHigh,
                         contentDescription = "Report",
-                        tint = ReportAccent
+                        tint = ReportAccent,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "Report this Echo?",
-                    style = VoidTypography.displayLarge.copy(fontSize = 20.sp),
-                    color = NeonWhite
+                    text = "REPORT ECHO",
+                    style = VoidTypography.labelSmall.copy(color = NeonWhite, letterSpacing = 6.sp, fontSize = 11.sp)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -77,39 +82,53 @@ fun ReportDialog(
                 Text(
                     text = "\"If this whisper disrupts the peace of the void, it will be flagged. Enough flags, and it shall be silenced forever.\"",
                     style = VoidTypography.bodyLarge.copy(
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         lineHeight = 20.sp,
-                        color = Stone300
+                        color = Color.White.copy(alpha = 0.5f)
                     ),
                     textAlign = TextAlign.Center,
-                    fontStyle = FontStyle.Italic
+                    modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(36.dp))
 
+                // --- CUSTOM PREMIUM BUTTONS ---
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, Stone800),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Stone300),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("CANCEL", style = VoidTypography.labelSmall)
-                    }
-
-                    Button(
-                        onClick = onConfirm,
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = ReportBg),
-                        border = BorderStroke(1.dp, ReportAccent.copy(alpha = 0.3f)),
-                        modifier = Modifier.weight(1f)
+                    // Cancel Button (Neutral Glass)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "REPORT",
-                            style = VoidTypography.labelSmall.copy(color = ReportAccent)
+                            "CANCEL",
+                            style = VoidTypography.labelSmall.copy(color = NeonWhite, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    // Report Button (Red Glass Accent)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            // A slightly stronger background so the danger action is clear
+                            .background(ReportAccent.copy(alpha = 0.12f))
+                            .border(1.dp, ReportAccent.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .clickable { onConfirm() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "SILENCE IT",
+                            style = VoidTypography.labelSmall.copy(color = ReportAccent, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
                         )
                     }
                 }
