@@ -1,5 +1,17 @@
 package com.example.echo.presentation.components
 
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import android.graphics.BlurMaskFilter
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.foundation.ScrollState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.zIndex
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -51,12 +63,15 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import kotlin.math.*
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.foundation.horizontalScroll
 
 @Composable
 fun JourneyOverlay(
     stats: UserStatsDto?,
-    userEchoes: List<EchoDto> = emptyList(), // Added actual user data for graphs
+    allEchoes: List<EchoDto> = emptyList(), // ✅ CHANGED: Must pass ALL echoes now to find resonance on stranger's posts
     dominantMood: Int?,
     activityStreak: Int,
     userName: String?,
@@ -147,8 +162,8 @@ fun JourneyOverlay(
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.92f) // Locked width to prevent stretching
-                    .fillMaxHeight(0.85f) // Locked height to avoid taskbar clipping
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.85f)
                     .clip(RoundedCornerShape(32.dp))
                     .background(VoidBlack)
                     .border(0.5.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(32.dp))
@@ -166,24 +181,19 @@ fun JourneyOverlay(
                             Text(
                                 "SOUL CONSOLE",
                                 style = VoidTypography.labelSmall.copy(
-                                    color = Color(0xFF94A3B8), // Neutral Mood Color
+                                    color = Color(0xFF94A3B8),
                                     letterSpacing = 8.sp,
                                     fontSize = 14.sp
                                 )
                             )
                             Spacer(Modifier.height(12.dp))
-                            // Much wider line for elegant separation
                             Box(
                                 Modifier
-                                    .fillMaxWidth(0.8f) // Expanded from 40.dp to 80% of the container width
+                                    .fillMaxWidth(0.8f)
                                     .height(1.dp)
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(
-                                                Color.Transparent,
-                                                Color(0xFF94A3B8).copy(alpha = 0.4f), // Matches the title color
-                                                Color.Transparent
-                                            )
+                                            listOf(Color.Transparent, Color(0xFF94A3B8).copy(alpha = 0.4f), Color.Transparent)
                                         )
                                     )
                             )
@@ -193,10 +203,9 @@ fun JourneyOverlay(
                         }
                     }
 
-// Clean vertical spacing (removed the unnecessary width here)
                     Spacer(modifier = Modifier.height(40.dp))
 
-// JOURNEY & ATOM
+                    // JOURNEY & ATOM
                     Text("YOUR JOURNEY", style = VoidTypography.labelSmall.copy(color = NeonWhite, letterSpacing = 6.sp, fontSize = 10.sp))
                     Spacer(Modifier.height(8.dp))
                     Text("A reflection of your emotions over time.", style = VoidTypography.bodyLarge.copy(fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f), textAlign = TextAlign.Center))
@@ -224,7 +233,6 @@ fun JourneyOverlay(
                                         }
                                     }
                                 }
-                                // EXACTLY 4 ORBITS AS REQUESTED
                                 drawPremiumPlane(0f, 1.2f, moodColor, 3)
                                 drawPremiumPlane(60f, -0.8f, Color.White, 2)
                                 drawPremiumPlane(120f, 1.5f, moodColor, 2)
@@ -250,18 +258,20 @@ fun JourneyOverlay(
                     // --- FUNCTIONAL DATA GRAPHS ---
                     // ==========================================
 
-                    ConsoleSectionHeader("MOOD DISTRIBUTION:", { activeHelpSection = if(activeHelpSection=="mood") null else "mood" }, if(activeHelpSection=="mood") "Analysis of your projected emotions. Heights correlate to signal density." else null)
-                    FunctionalMoodChart(userEchoes)
+                    ConsoleSectionHeader("MOOD DISTRIBUTION (7 DAYS):", { activeHelpSection = if(activeHelpSection=="mood") null else "mood" }, if(activeHelpSection=="mood") "Analysis of your projected emotions and resonances over the last week." else null)
+                    FunctionalMoodChart(allEchoes, userSignatureId, scrollState)
 
                     Spacer(modifier = Modifier.height(48.dp))
 
-                    ConsoleSectionHeader("SIGNAL CALENDAR:", { activeHelpSection = if(activeHelpSection=="cal") null else "cal" }, if(activeHelpSection=="cal") "Your activity heatmap for the last 91 days. Darker pulses indicate higher volume." else null)
-                    SignalHeatmap(userEchoes)
+                    ConsoleSectionHeader("SIGNAL CALENDAR:", { activeHelpSection = if(activeHelpSection=="cal") null else "cal" }, if(activeHelpSection=="cal") "Your activity heatmap for the last 91 days combining posts and resonances." else null)
+                    SignalHeatmap(allEchoes, userSignatureId)
+                    ActivityLegend()
 
                     Spacer(modifier = Modifier.height(48.dp))
 
                     ConsoleSectionHeader("WAVELENGTH ACTIVITY:", { activeHelpSection = if(activeHelpSection=="wave") null else "wave" }, if(activeHelpSection=="wave") "Temporal analysis of signal peaks throughout the 24-hour cycle." else null)
-                    FunctionalWavelength(moodColor, userEchoes)
+                    FunctionalWavelength(allEchoes, userSignatureId)
+                    ActivityLegend()
 
                     Spacer(modifier = Modifier.height(64.dp))
 
@@ -384,8 +394,8 @@ fun JourneyOverlay(
 
                     Spacer(modifier = Modifier.height(64.dp))
 
-// ==========================================
-                    // --- ECHO+ SECTION (FIXED SUCCESS LAYOUT) ---
+                    // ==========================================
+                    // --- ECHO+ SECTION ---
                     // ==========================================
                     Box(
                         modifier = Modifier
@@ -429,14 +439,11 @@ fun JourneyOverlay(
                                 Text("You've been added to the ECHO+ waitlist.", style = VoidTypography.bodyLarge.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.Center))
                             }
                         }
-                    } // End of Echo+ Box
+                    }
                     Spacer(modifier = Modifier.height(32.dp))
-                } // End of Main Column
-            } // End of Locked Console Box
-        } // End of AnimatedVisibility
-
-        // --- THE ERROR BANNER AND SUCCESS FADE NOW SIT BELOW THIS LINE ---
-
+                }
+            }
+        }
 
         // ==========================================
         // --- TOP ALIGN SYSTEM ERROR BANNER ---
@@ -525,67 +532,433 @@ fun ConsoleSectionHeader(title: String, onHelp: () -> Unit, helpContent: String?
     }
 }
 
+// ✅ DYNAMIC LEGEND FOR GREEN ACTIVITY CODES
 @Composable
-fun FunctionalMoodChart(echoes: List<EchoDto>) {
-    val counts = remember(echoes) {
+fun ActivityLegend() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LegendItem(Color(0xFF4ADE80).copy(alpha = 0.6f), "Echoed")
+        Spacer(Modifier.width(16.dp))
+        LegendItem(Color(0xFF4ADE80).copy(alpha = 0.25f), "Resonated")
+        Spacer(Modifier.width(16.dp))
+        LegendItem(Color(0xFF00FF66), "Both")
+    }
+}
+
+@Composable
+fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = VoidTypography.labelSmall.copy(fontSize = 9.sp, color = Color.White.copy(0.5f)))
+    }
+}
+
+// ✅ MASTER UPGRADE: True Gaussian Blur Glow (Single Seamless Line)
+@Composable
+fun FunctionalMoodChart(
+    allEchoes: List<EchoDto>,
+    userSignatureId: String,
+    scrollState: ScrollState // Left here so you don't have to change JourneyOverlay.kt
+) {
+    val counts = remember(allEchoes, userSignatureId) {
         val bins = IntArray(5) { 0 }
-        echoes.forEach { if (it.mood in 0..4) bins[it.mood!!]++ }
+        val oneWeekAgo = Instant.now().minus(7, ChronoUnit.DAYS)
+
+        allEchoes.forEach { echo ->
+            val mood = echo.mood ?: return@forEach
+            if (echo.signatureId == userSignatureId) {
+                try { if (Instant.parse(echo.createdAt).isAfter(oneWeekAgo)) bins[mood]++ } catch(e: Exception) {}
+            }
+            echo.replies?.forEach { reply ->
+                try {
+                    val replyClass = reply!!::class.java
+                    val sigId = (replyClass.methods.find { it.name.equals("getSignatureId", ignoreCase = true) }?.invoke(reply) as? String) ?: (replyClass.methods.find { it.name.equals("getUserId", ignoreCase = true) }?.invoke(reply) as? String)
+                    val createdAt = replyClass.methods.find { it.name.equals("getCreatedAt", ignoreCase = true) }?.invoke(reply) as? String
+                    if (sigId == userSignatureId && createdAt != null) {
+                        if (Instant.parse(createdAt).isAfter(oneWeekAgo)) bins[mood]++
+                    }
+                } catch(e: Exception) {}
+            }
+        }
         bins
     }
-    val max = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
-    val colors = listOf(Color(0xFFFF453A), Color(0xFFFF9F0A), Color(0xFF94A3B8), Color(0xFF64D2FF), Color(0xFF34C759))
-    val labels = listOf("DIST", "HEAV", "NEUT", "CALM", "RADI")
 
-    Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.02f), RoundedCornerShape(12.dp)).padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().height(80.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            counts.forEachIndexed { i, count ->
-                val h = (count.toFloat() / max).coerceAtLeast(0.05f)
-                Box(modifier = Modifier.weight(1f).padding(horizontal = 6.dp).fillMaxHeight(h).clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)).background(colors[i].copy(0.4f)).border(0.5.dp, colors[i], RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            labels.forEachIndexed { i, label ->
-                Text(text = label, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, style = VoidTypography.labelSmall.copy(fontSize = 9.sp, color = colors[i].copy(0.7f), letterSpacing = 1.sp))
-            }
-        }
-    }
-}
+    val totalCount = counts.sum().coerceAtLeast(1)
+    val baseColors = listOf(
+        Color(0xFFFF3B30), Color(0xFFFF9500),
+        Color(0xFFB0BEC5), // Metallic Bluish Silver
+        Color(0xFF5AC8FA), Color(0xFF4CD964)
+    )
+    val baseLabels = listOf("DISTURBED", "HEAVY", "NEUTRAL", "CALM", "RADIANT")
 
-@Composable
-fun SignalHeatmap(echoes: List<EchoDto>) {
-    val activeDays = remember(echoes) {
-        echoes.map { try { Instant.parse(it.createdAt).atZone(ZoneId.systemDefault()).toLocalDate() } catch(e: Exception) { LocalDate.now() } }.groupBy { it }
+    val legendOrder = remember(counts) {
+        (0..4).map { i -> Triple(baseLabels[i], baseColors[i], counts[i]) }
+            .sortedByDescending { it.third }
     }
-    val today = LocalDate.now()
-    Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.02f), RoundedCornerShape(12.dp)).padding(16.dp)) {
-        repeat(7) { row ->
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                repeat(14) { col -> // 14 weeks wide
-                    val date = today.minusDays(((13 - col) * 7 + (6 - row)).toLong())
-                    val intensity = (activeDays[date]?.size ?: 0).coerceAtMost(4)
-                    val color = when(intensity) { 0 -> Color.White.copy(0.03f) 1 -> NeonWhite.copy(0.2f) 2 -> NeonWhite.copy(0.4f) 3 -> NeonWhite.copy(0.7f) else -> NeonWhite }
-                    Box(modifier = Modifier.size(16.dp).clip(RoundedCornerShape(3.dp)).background(color))
+
+    val ringOrder = remember(counts) {
+        val others = (1..4).map { i -> Triple(baseLabels[i], baseColors[i], counts[i]) }
+            .sortedByDescending { it.third }
+        others + Triple(baseLabels[0], baseColors[0], counts[0])
+    }
+
+    val animationProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(500)
+        animationProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = 2400,
+                easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+            )
+        )
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.02f), RoundedCornerShape(12.dp)).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(modifier = Modifier.size(240.dp), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackWidth = 2.dp.toPx()
+                val activeWidth = 4.dp.toPx()
+                val gap = 16.dp.toPx()
+
+                val safePadding = 16.dp.toPx()
+                val outerRadius = (size.minDimension / 2f) - safePadding
+
+                ringOrder.forEachIndexed { i, stat ->
+                    val radius = outerRadius - (i * gap)
+                    val percentage = if (counts.sum() > 0) stat.third.toFloat() / totalCount else 0f
+                    val currentSweep = (percentage * 360f) * animationProgress.value
+
+                    // 1. Faded Background Track (Orbit Path)
+                    drawCircle(
+                        color = stat.second.copy(alpha = 0.25f),
+                        radius = radius,
+                        center = center,
+                        style = Stroke(width = trackWidth)
+                    )
+
+                    if (currentSweep > 0f) {
+                        val rect = Rect(
+                            Offset(center.x - radius, center.y - radius),
+                            Size(radius * 2, radius * 2)
+                        )
+
+                        // 2. TRUE GAUSSIAN BLUR GLOW FOR THE ENTIRE LINE
+                        drawIntoCanvas { canvas ->
+                            val glowPaint = Paint().apply {
+                                color = stat.second.copy(alpha = 0.6f)
+                                style = PaintingStyle.Stroke
+                                strokeWidth = 10.dp.toPx() // Wider than core for dispersion
+                                strokeCap = StrokeCap.Round
+                            }
+                            // This applies a native, mathematically perfect blur to the path
+                            glowPaint.asFrameworkPaint().maskFilter = BlurMaskFilter(15f, BlurMaskFilter.Blur.NORMAL)
+
+                            canvas.drawArc(rect, -90f, currentSweep, false, glowPaint)
+                        }
+
+                        // 3. Solid Core Line (Drawn sharply over the blur)
+                        drawArc(
+                            color = stat.second,
+                            startAngle = -90f,
+                            sweepAngle = currentSweep,
+                            useCenter = false,
+                            topLeft = Offset(center.x - radius, center.y - radius),
+                            size = Size(radius * 2, radius * 2),
+                            style = Stroke(width = activeWidth, cap = StrokeCap.Round)
+                        )
+
+                        // 4. Trigonometry to find arc tip for the hot particle head
+                        val angleInRadians = Math.toRadians((-90f + currentSweep).toDouble())
+                        val dotX = center.x + radius * cos(angleInRadians).toFloat()
+                        val dotY = center.y + radius * sin(angleInRadians).toFloat()
+
+                        val moodColor = stat.second
+                        val glowRadius = 12.dp.toPx() // Hotter/Brighter field at the tip
+
+                        // High-intensity radial burst at the head
+                        val glowBrush = Brush.radialGradient(
+                            colors = listOf(
+                                moodColor,
+                                moodColor.copy(0.5f),
+                                Color.Transparent
+                            ),
+                            center = Offset(dotX, dotY),
+                            radius = glowRadius
+                        )
+
+                        // Head Diffused Glow
+                        drawCircle(brush = glowBrush, radius = glowRadius, center = Offset(dotX, dotY))
+                        // Head Physical Core
+                        drawCircle(color = moodColor, radius = 4.dp.toPx(), center = Offset(dotX, dotY))
+                        // Piercing White Center
+                        drawCircle(color = Color.White, radius = 2.dp.toPx(), center = Offset(dotX, dotY))
+                    }
                 }
             }
-            Spacer(Modifier.height(5.dp))
+        }
+
+        Spacer(Modifier.height(40.dp))
+
+        // --- LEGEND (Order: Highest -> Lowest) ---
+        Column(modifier = Modifier.fillMaxWidth()) {
+            legendOrder.forEach { stat ->
+                val percentage = if (counts.sum() > 0) ((stat.third.toFloat() / totalCount) * 100).roundToInt() else 0
+                val isZero = percentage == 0
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(if (isZero) stat.second.copy(alpha = 0.3f) else stat.second))
+                        Spacer(Modifier.width(14.dp))
+                        Text(
+                            text = stat.first,
+                            style = VoidTypography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                color = if (isZero) Color.White.copy(0.3f) else Color.White.copy(0.8f),
+                                letterSpacing = 1.sp
+                            )
+                        )
+                    }
+                    Text(
+                        text = "$percentage%",
+                        style = VoidTypography.labelSmall.copy(
+                            fontSize = 14.sp,
+                            color = if (isZero) Color.White.copy(0.3f) else NeonWhite,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    )
+                }
+            }
         }
     }
 }
 
+// ✅ UPGRADED HEATMAP: Premium Interactive Monthly Calendar
 @Composable
-fun FunctionalWavelength(color: Color, echoes: List<EchoDto>) {
-    val bins = remember(echoes) {
-        val h = IntArray(24) { 0 }
-        echoes.forEach { try { h[Instant.parse(it.createdAt).atZone(ZoneId.systemDefault()).hour]++ } catch(e: Exception) {} }
-        h
+fun SignalHeatmap(allEchoes: List<EchoDto>, userSignatureId: String) {
+    val activeDays = remember(allEchoes, userSignatureId) {
+        val map = mutableMapOf<LocalDate, Pair<Boolean, Boolean>>() // Pair(hasPost, hasRes)
+        allEchoes.forEach { echo ->
+            if (echo.signatureId == userSignatureId) {
+                try {
+                    val date = Instant.parse(echo.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
+                    val current = map[date] ?: Pair(false, false)
+                    map[date] = current.copy(first = true)
+                } catch(e: Exception) {}
+            }
+
+            echo.replies?.forEach { reply ->
+                try {
+                    val replyClass = reply!!::class.java
+                    val sigId = (replyClass.methods.find { it.name.equals("getSignatureId", ignoreCase = true) }?.invoke(reply) as? String)
+                        ?: (replyClass.methods.find { it.name.equals("getUserId", ignoreCase = true) }?.invoke(reply) as? String)
+                    val createdAt = replyClass.methods.find { it.name.equals("getCreatedAt", ignoreCase = true) }?.invoke(reply) as? String
+
+                    if (sigId == userSignatureId && createdAt != null) {
+                        val date = Instant.parse(createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
+                        val current = map[date] ?: Pair(false, false)
+                        map[date] = current.copy(second = true)
+                    }
+                } catch(e: Exception) {}
+            }
+        }
+        map
     }
+
+    val today = LocalDate.now()
+    var currentMonthStart by remember { mutableStateOf(today.withDayOfMonth(1)) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(0.02f), RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        // --- CALENDAR HEADER ---
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = { currentMonthStart = currentMonthStart.minusMonths(1) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous Month", tint = Stone400)
+            }
+
+            Text(
+                text = "${currentMonthStart.month.name} ${currentMonthStart.year}".uppercase(),
+                style = VoidTypography.labelSmall.copy(
+                    fontSize = 12.sp,
+                    letterSpacing = 3.sp,
+                    color = NeonWhite,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+
+            IconButton(
+                onClick = { currentMonthStart = currentMonthStart.plusMonths(1) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next Month", tint = Stone400)
+            }
+        }
+
+        // --- DAYS OF WEEK ROW ---
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("S", "M", "T", "W", "T", "F", "S").forEach { day ->
+                Text(
+                    text = day,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = VoidTypography.labelSmall.copy(color = Stone400, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // --- CALENDAR GRID (Crossfades when changing months) ---
+        AnimatedContent(
+            targetState = currentMonthStart,
+            transitionSpec = { fadeIn(tween(400)) togetherWith fadeOut(tween(400)) },
+            label = "Calendar Transition"
+        ) { monthDate ->
+
+            val daysInMonth = monthDate.lengthOfMonth()
+            // 7 = Sunday. We want Sunday to be index 0.
+            val startDayOfWeek = if (monthDate.dayOfWeek.value == 7) 0 else monthDate.dayOfWeek.value
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                var dayCounter = 1
+                for (row in 0..5) {
+                    if (dayCounter > daysInMonth) break
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for (col in 0..6) {
+                            if (row == 0 && col < startDayOfWeek || dayCounter > daysInMonth) {
+                                // Empty Placeholder Box
+                                Box(modifier = Modifier.weight(1f).aspectRatio(1f))
+                            } else {
+                                val currentDate = monthDate.withDayOfMonth(dayCounter)
+                                val activity = activeDays[currentDate] ?: Pair(false, false)
+                                val isToday = currentDate == today
+
+                                // Logic for Box Color
+                                val boxColor = when {
+                                    activity.first && activity.second -> Color(0xFF00FF66)
+                                    activity.first -> Color(0xFF4ADE80).copy(alpha = 0.6f)
+                                    activity.second -> Color(0xFF4ADE80).copy(alpha = 0.25f)
+                                    else -> Color.White.copy(alpha = 0.03f)
+                                }
+
+                                // Logic to ensure numbers are readable against the background
+                                val textColor = when {
+                                    activity.first && activity.second -> VoidBlack
+                                    activity.first -> VoidBlack
+                                    activity.second -> NeonWhite
+                                    else -> Stone400
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(boxColor)
+                                        .border(
+                                            width = if (isToday) 1.dp else 0.dp,
+                                            color = if (isToday) NeonWhite.copy(alpha = 0.5f) else Color.Transparent,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = dayCounter.toString(),
+                                        style = VoidTypography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = if (activity.first || activity.second) FontWeight.Bold else FontWeight.Normal,
+                                            color = textColor
+                                        )
+                                    )
+                                }
+                                dayCounter++
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ✅ UPGRADED WAVELENGTH: Dynamic Green Heights + Color Tracking
+@Composable
+fun FunctionalWavelength(allEchoes: List<EchoDto>, userSignatureId: String) {
+    val bins = remember(allEchoes, userSignatureId) {
+        val postBins = IntArray(24) { 0 }
+        val resBins = IntArray(24) { 0 }
+
+        allEchoes.forEach { echo ->
+            if (echo.signatureId == userSignatureId) {
+                try {
+                    val hour = Instant.parse(echo.createdAt).atZone(ZoneId.systemDefault()).hour
+                    postBins[hour]++
+                } catch(e: Exception) {}
+            }
+
+            echo.replies?.forEach { reply ->
+                try {
+                    val replyClass = reply!!::class.java
+                    val sigId = (replyClass.methods.find { it.name.equals("getSignatureId", ignoreCase = true) }?.invoke(reply) as? String)
+                        ?: (replyClass.methods.find { it.name.equals("getUserId", ignoreCase = true) }?.invoke(reply) as? String)
+                    val createdAt = replyClass.methods.find { it.name.equals("getCreatedAt", ignoreCase = true) }?.invoke(reply) as? String
+
+                    if (sigId == userSignatureId && createdAt != null) {
+                        val hour = Instant.parse(createdAt).atZone(ZoneId.systemDefault()).hour
+                        resBins[hour]++
+                    }
+                } catch(e: Exception) {}
+            }
+        }
+        Pair(postBins, resBins)
+    }
+
+    val postBins = bins.first
+    val resBins = bins.second
+    val totalMax = maxOf(postBins.maxOrNull() ?: 1, resBins.maxOrNull() ?: 1)
+
     Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(0.02f), RoundedCornerShape(12.dp)).padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth().height(80.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            val max = bins.maxOrNull()?.coerceAtLeast(1) ?: 1
-            bins.forEach { count ->
-                val h = (count.toFloat() / max).coerceAtLeast(0.02f)
-                Box(modifier = Modifier.weight(1f).padding(horizontal = 1.dp).fillMaxHeight(h).background(color.copy(0.6f), RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
+            for (i in 0..23) {
+                val post = postBins[i]
+                val res = resBins[i]
+                val maxVal = maxOf(post, res)
+
+                val h = (maxVal.toFloat() / totalMax).coerceAtLeast(0.02f)
+                val color = if (post > 0 && res > 0) Color(0xFF166534) // Both (Dark)
+                else if (post > 0) Color(0xFF4ADE80).copy(0.6f) // Post (Light)
+                else if (res > 0) Color(0xFF4ADE80).copy(0.25f) // Resonated (Lightest)
+                else Color.White.copy(0.03f) // None
+
+                Box(modifier = Modifier.weight(1f).padding(horizontal = 1.dp).fillMaxHeight(h).background(color, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
             }
         }
         Spacer(Modifier.height(10.dp))

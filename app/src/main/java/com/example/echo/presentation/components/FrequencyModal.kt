@@ -116,7 +116,7 @@ fun FrequencyModal(
                 contentAlignment = Alignment.TopCenter
             ) {
                 Box(modifier = Modifier.fillMaxWidth().height(180.dp)
-                    .background(Brush.verticalGradient(listOf(neutralSilver.copy(alpha = 0.12f), Color.Transparent))))
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.Transparent))))
 
                 Column(modifier = Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

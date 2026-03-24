@@ -32,6 +32,7 @@
             android:name="com.example.echo.presentation.MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Echo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

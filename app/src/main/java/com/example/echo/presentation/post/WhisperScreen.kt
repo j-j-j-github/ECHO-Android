@@ -162,7 +162,7 @@ fun WhisperOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
+            .background(Color.Transparent)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
             .imePadding() // Float over keyboard
             .navigationBarsPadding(),

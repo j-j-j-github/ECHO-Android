@@ -1,5 +1,8 @@
 package com.example.echo.presentation.feed
 
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.draw.shadow
 import android.app.Activity
 import android.content.BroadcastReceiver
@@ -85,6 +88,7 @@ import java.time.temporal.ChronoUnit
 fun VoidScreen(
     viewModel: VoidViewModel = hiltViewModel()
 ) {
+    val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val echoes by viewModel.echoes.collectAsStateWithLifecycle()
     val activeCount by viewModel.activeSouls.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -105,16 +109,39 @@ fun VoidScreen(
     val showRatePopup by viewModel.showRatePopup.collectAsStateWithLifecycle()
     val manager = remember { com.google.android.play.core.review.ReviewManagerFactory.create(context) }
 
-    // --- AESTHETIC TIME-AWARE GREETING & MOOD ENGINE ---
     val currentHour = java.time.LocalTime.now().hour
     val rawName = viewModel.displayName.collectAsStateWithLifecycle().value
     val justName = if (rawName.isNullOrBlank()) "soul" else rawName!!
 
-// We use mutableStateOf so the UI redraws every time the timer updates this variable
     var displayMessage by remember { mutableStateOf<Pair<String, String>>(Pair("Welcome back,", "$justName.")) }
 
-// Loop that changes the message every 15 seconds based on the active mood
-    LaunchedEffect(sessionFrequency, currentHour, justName) {
+    // ✅ STATE MACHINE: Handles Offline -> Connected -> Normal transitions
+    var wasOffline by remember { mutableStateOf(false) }
+    var showReconnected by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isOffline) {
+        if (isOffline) {
+            wasOffline = true
+            showReconnected = false
+        } else if (wasOffline) {
+            showReconnected = true
+            delay(4000) // Flash "Connected back" for 4 seconds
+            showReconnected = false
+            wasOffline = false
+        }
+    }
+
+    // ✅ MASTER BANNER LOOP
+    LaunchedEffect(sessionFrequency, currentHour, justName, isOffline, showReconnected) {
+        if (isOffline) {
+            displayMessage = Pair("Disconnected from", "the Void.")
+            return@LaunchedEffect
+        }
+        if (showReconnected) {
+            displayMessage = Pair("Connected back to", "the Void.")
+            return@LaunchedEffect
+        }
+
         while (true) {
             val greetings = when (currentHour) {
                 in 5..11 -> listOf(Pair("Good morning,", "$justName."), Pair("A new dawn,", "$justName."))
@@ -124,55 +151,31 @@ fun VoidScreen(
             }
 
             val moodHooks = when (sessionFrequency) {
-                0 -> listOf(
-                    Pair("Let it all out,", "$justName."),
-                    Pair("Release the noise,", "$justName."),
-                    Pair("Shout into the void,", "$justName."),
-                    Pair("It's okay to break,", "$justName."),
-                    Pair("Give your anger a voice,", "$justName."),
-                    Pair("What's tearing at you,", "$justName?")
-                )
-                1 -> listOf(
-                    Pair("Unburden your mind,", "$justName."),
-                    Pair("Rest your thoughts here,", "$justName."),
-                    Pair("Breathe through it,", "$justName."),
-                    Pair("Lay your armor down,", "$justName."),
-                    Pair("It's safe to be tired,", "$justName."),
-                    Pair("What weighs on your heart,", "$justName?")
-                )
-                3 -> listOf(
-                    Pair("Share your peace,", "$justName."),
-                    Pair("A quiet moment,", "$justName."),
-                    Pair("Embrace the stillness,", "$justName."),
-                    Pair("The storm has passed,", "$justName."),
-                    Pair("Find your center,", "$justName."),
-                    Pair("Let time slow down,", "$justName.")
-                )
-                4 -> listOf(
-                    Pair("Guide someone today,", "$justName."),
-                    Pair("Share your light,", "$justName."),
-                    Pair("What excites you,", "$justName?"),
-                    Pair("Let your joy spill over,", "$justName."),
-                    Pair("A beautiful frequency,", "$justName."),
-                    Pair("Celebrate this moment,", "$justName.")
-                )
-                else -> when (currentHour) { // NEUTRAL falls back to time-based introspection
-                    in 5..11 -> listOf(Pair("How are you feeling today,", "$justName?"), Pair("Start with a whisper,", "$justName."))
-                    in 12..17 -> listOf(Pair("Taking a breath,", "$justName?"), Pair("Where is your mind drifting,", "$justName?"))
-                    in 18..21 -> listOf(Pair("Reflecting on the day,", "$justName?"), Pair("Let the day go,", "$justName."))
-                    else -> listOf(Pair("What keeps you awake,", "$justName?"), Pair("Unburden your soul,", "$justName."))
-                }
+                0 -> listOf(Pair("Let it all out,", "$justName."), Pair("Release the noise,", "$justName."))
+                1 -> listOf(Pair("Unburden your mind,", "$justName."), Pair("Rest your thoughts here,", "$justName."))
+                3 -> listOf(Pair("Share your peace,", "$justName."), Pair("A quiet moment,", "$justName."))
+                4 -> listOf(Pair("Guide someone today,", "$justName."), Pair("Share your light,", "$justName."))
+                else -> listOf(Pair("How are you feeling today,", "$justName?"), Pair("Start with a whisper,", "$justName."))
             }
 
-            // 20% chance for a Time Greeting, 80% chance for an Empathetic Mood Hook
             displayMessage = if (Math.random() > 0.8) greetings.random() else moodHooks.random()
-
-            // Wait 15 seconds before picking a new phrase
             delay(30000L)
         }
     }
 
-// STRICT 5-MOOD SYSTEM
+    // ✅ DYNAMIC COLORS FOR THE BANNER TEXT
+    val primaryTextColor = when {
+        isOffline -> Color(0xFFFF453A).copy(alpha = 0.8f) // Red
+        showReconnected -> Color(0xFF34C759).copy(alpha = 0.8f) // Green
+        else -> Color.White.copy(alpha = 0.5f) // White
+    }
+
+    val secondaryTextColor = when {
+        isOffline -> Color(0xFFFF453A) // Bright Red
+        showReconnected -> Color(0xFF34C759) // Bright Green
+        else -> NeonWhite // White
+    }
+
     val currentMoodName = when (sessionFrequency) {
         0 -> "DISTURBED"
         1 -> "HEAVY"
@@ -181,13 +184,12 @@ fun VoidScreen(
         else -> "NEUTRAL"
     }
 
-// Trigger the mood message *every* time the modal closes
     var showMoodMessage by remember { mutableStateOf(false) }
     LaunchedEffect(showFrequencyModal) {
         if (!showFrequencyModal) {
             showMoodMessage = true
-            delay(3500) // Hold for 3.5 seconds
-            showMoodMessage = false // Fade to displayMessage
+            delay(3500)
+            showMoodMessage = false
         }
     }
 
@@ -198,9 +200,7 @@ fun VoidScreen(
                 if (task.isSuccessful) {
                     val reviewInfo = task.result
                     val activity = context as? Activity
-                    if (activity != null) {
-                        manager.launchReviewFlow(activity, reviewInfo)
-                    }
+                    if (activity != null) manager.launchReviewFlow(activity, reviewInfo)
                 }
                 viewModel.resetRateTrigger()
             }
@@ -223,19 +223,10 @@ fun VoidScreen(
                             actionLabel = "RESTART",
                             duration = SnackbarDuration.Indefinite
                         )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            appUpdateManager.completeUpdate()
-                        }
+                        if (result == SnackbarResult.ActionPerformed) appUpdateManager.completeUpdate()
                     }
                 }
             }
-        }
-    }
-
-    LaunchedEffect(showGetStarted) {
-        if (!showGetStarted) {
-            delay(600)
-            viewModel.openFrequencyModal()
         }
     }
 
@@ -261,11 +252,17 @@ fun VoidScreen(
     val listState = rememberLazyGridState()
     var selectedEchoId by remember { mutableStateOf<String?>(null) }
 
-    // ✅ FORCE OPEN THE POST
     LaunchedEffect(deepLinkEcho) {
         deepLinkEcho?.let { echo ->
             selectedEchoId = echo.id
             viewModel.consumeDeepLink()
+        }
+    }
+
+    LaunchedEffect(showGetStarted) {
+        if (!showGetStarted) {
+            delay(600)
+            if (selectedEchoId == null && deepLinkEcho == null) viewModel.openFrequencyModal()
         }
     }
 
@@ -295,9 +292,7 @@ fun VoidScreen(
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                viewModel.onRealtimeNotificationReceived()
-            }
+            override fun onReceive(context: Context?, intent: Intent?) { viewModel.onRealtimeNotificationReceived() }
         }
         val filter = IntentFilter("com.example.echo.NEW_NOTIFICATION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -331,7 +326,7 @@ fun VoidScreen(
 
     val isHomeCovered = isPanelOpen || showAbout || showWhisper || selectedEchoId != null || (echoToReport != null && selectedEchoId == null) || showGetStarted || showFrequencyModal || showJourneyOverlay
     val homeBlur by animateDpAsState(targetValue = if (isHomeCovered) 8.dp else 0.dp, label = "homeBlur", animationSpec = tween(400))
-    val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.6f else 0f, label = "dimAlpha", animationSpec = tween(400))
+    val dimAlpha by animateFloatAsState(targetValue = if (isHomeCovered) 0.3f else 0f, label = "dimAlpha", animationSpec = tween(400))
 
     val density = LocalDensity.current
     val refreshTriggerPx = with(density) { 80.dp.toPx() }
@@ -479,25 +474,20 @@ fun VoidScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // ✅ THE FIX: We reduced the outer start padding from 20.dp down to 8.dp.
-                        // This makes the "animation camera lens" much wider on the left.
                         .padding(start = 8.dp, end = 20.dp, top = 12.dp, bottom = 12.dp)
-                        .height(72.dp) // Fixed height prevents layout jumping
+                        .height(72.dp)
                         .zIndex(2f),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Crossfade(
                         targetState = showMoodMessage,
-                        animationSpec = tween(durationMillis = 1200), // Very slow, cinematic 1.2-second dissolve
+                        animationSpec = tween(durationMillis = 1200),
                         label = "GreetingFade"
                     ) { isShowingMood ->
                         if (isShowingMood) {
-                            // ✅ THE FIX: We push the text 12.dp back to the right on the INSIDE.
-                            // 8.dp (outer) + 12.dp (inner) = 20.dp. It aligns perfectly with your UI,
-                            // but now has 12.dp of pure, un-clippable safe space on the left!
                             Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp)) {
                                 Text(
-                                    text = "Frequency set to", // Removed manual spaces
+                                    text = "Frequency set to",
                                     style = TextStyle(
                                         fontFamily = FontFamily.Serif,
                                         fontSize = 20.sp,
@@ -506,12 +496,17 @@ fun VoidScreen(
                                     )
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
+
                                 Text(
-                                    text = "$currentMoodName, $justName.", // Removed manual spaces
+                                    text = buildAnnotatedString {
+                                        withStyle(style = SpanStyle(color = sessionColor)) { append(currentMoodName) }
+                                        if (currentMoodName != "DISTURBED") {
+                                            withStyle(style = SpanStyle(color = NeonWhite)) { append(" for this session.") }
+                                        }
+                                    },
                                     style = TextStyle(
                                         fontFamily = FontFamily.Serif,
                                         fontSize = 28.sp,
-                                        color = sessionColor, // Glows with the selected mood
                                         fontWeight = FontWeight.Light,
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                     )
@@ -520,31 +515,28 @@ fun VoidScreen(
                         } else {
                             AnimatedContent(
                                 targetState = displayMessage,
-                                transitionSpec = {
-                                    fadeIn(tween(800)) togetherWith fadeOut(tween(800))
-                                },
+                                transitionSpec = { fadeIn(tween(800)) togetherWith fadeOut(tween(800)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.CenterStart,
                                 label = "HookFade"
                             ) { currentMessage ->
-                                // ✅ Same here: We push the text 12.dp to the right inside the animation
                                 Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp)) {
                                     Text(
-                                        text = currentMessage.first.toString(), // Removed manual spaces
+                                        text = currentMessage.first.toString(),
                                         style = TextStyle(
                                             fontFamily = FontFamily.Serif,
                                             fontSize = 20.sp,
-                                            color = Color.White.copy(alpha = 0.5f),
+                                            color = primaryTextColor, // ✅ APPLIES DYNAMIC COLOR
                                             fontWeight = FontWeight.Normal
                                         )
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = currentMessage.second.toString(), // Removed manual spaces
+                                        text = currentMessage.second.toString(),
                                         style = TextStyle(
                                             fontFamily = FontFamily.Serif,
                                             fontSize = 28.sp,
-                                            color = NeonWhite,
+                                            color = secondaryTextColor, // ✅ APPLIES DYNAMIC COLOR
                                             fontWeight = FontWeight.Light,
                                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                         )
@@ -647,7 +639,10 @@ fun VoidScreen(
                         label = "SpaceTransition",
                         modifier = Modifier.fillMaxSize().graphicsLayer { translationY = pullOffsetY }.zIndex(1f)
                     ) { currentCategory ->
-                        val animatingEchoes = if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
+
+                        val animatingEchoes = if (isOffline) emptyList() else {
+                            if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
+                        }
 
                         val now = Instant.now()
                         val sixHoursAgo = now.minus(6, ChronoUnit.HOURS)
@@ -669,7 +664,23 @@ fun VoidScreen(
                         ) {
                             item(span = { GridItemSpan(2) }) { SpaceHeaderCard(space = currentCategory) }
 
-                            if (animatingEchoes.isEmpty() && !isRefreshing) {
+                            if (isOffline) {
+                                item(span = { GridItemSpan(2) }) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(400.dp), contentAlignment = Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "YOU ARE NOT CONNECTED.",
+                                                style = VoidTypography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Stone400, letterSpacing = 2.sp)
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                text = "Waiting for a signal...",
+                                                style = VoidTypography.bodyLarge.copy(fontSize = 12.sp, color = Stone400)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (animatingEchoes.isEmpty() && !isRefreshing) {
                                 item(span = { GridItemSpan(2) }) {
                                     Box(modifier = Modifier.fillMaxWidth().height(400.dp), contentAlignment = Alignment.Center) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -685,8 +696,8 @@ fun VoidScreen(
                                         }
                                     }
                                 }
-                            } else {
-                                // 1. RECENT ECHOES SECTION
+                            }
+                            else {
                                 if (recentEchoes.isNotEmpty()) {
                                     item(span = { GridItemSpan(2) }) {
                                         Column(
@@ -702,15 +713,24 @@ fun VoidScreen(
                                         }
                                     }
                                     items(items = recentEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
-                                        EchoCard(
-                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
-                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
-                                            onClick = { selectedEchoId = echo.id }
-                                        )
+                                        var isVisible by remember { mutableStateOf(false) }
+                                        LaunchedEffect(Unit) { isVisible = true }
+
+                                        Column {
+                                            AnimatedVisibility(
+                                                visible = isVisible,
+                                                enter = fadeIn(animationSpec = tween(600)) + slideInVertically(animationSpec = tween(600)) { it / 6 }
+                                            ) {
+                                                EchoCard(
+                                                    echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
+                                                    onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                                    onClick = { selectedEchoId = echo.id }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
-                                // 2. OLDER ECHOES SECTION
                                 if (olderEchoes.isNotEmpty()) {
                                     item(span = { GridItemSpan(2) }) {
                                         Column(
@@ -726,11 +746,21 @@ fun VoidScreen(
                                         }
                                     }
                                     items(items = olderEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
-                                        EchoCard(
-                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
-                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
-                                            onClick = { selectedEchoId = echo.id }
-                                        )
+                                        var isVisible by remember { mutableStateOf(false) }
+                                        LaunchedEffect(Unit) { isVisible = true }
+
+                                        Column {
+                                            AnimatedVisibility(
+                                                visible = isVisible,
+                                                enter = fadeIn(animationSpec = tween(600)) + slideInVertically(animationSpec = tween(600)) { it / 6 }
+                                            ) {
+                                                EchoCard(
+                                                    echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
+                                                    onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                                    onClick = { selectedEchoId = echo.id }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -739,14 +769,30 @@ fun VoidScreen(
                 }
             }
 
-            // The Dark Fade Gradient MUST be behind the buttons!
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(180.dp)
-                    .zIndex(1.5f) // Put gradient at 1.5
+                    .zIndex(1.5f)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, VoidBlack.copy(alpha = 0.95f))))
+            )
+
+            // ✅ DASHBOARD ANIMATED COLORS
+            val dialBgColor by animateColorAsState(
+                targetValue = if (isOffline) Stone900 else Color.White,
+                animationSpec = tween(800),
+                label = "dialBgColor"
+            )
+            val leftDialContentColor by animateColorAsState(
+                targetValue = if (isOffline) Stone400 else sessionColor,
+                animationSpec = tween(800),
+                label = "leftDialContentColor"
+            )
+            val dialIconColor by animateColorAsState(
+                targetValue = if (isOffline) Stone400 else Color.Black,
+                animationSpec = tween(800),
+                label = "dialIconColor"
             )
 
             // DASHBOARD
@@ -756,17 +802,17 @@ fun VoidScreen(
                     .padding(bottom = 12.dp)
                     .fillMaxWidth()
                     .height(120.dp)
-                    .zIndex(2f), // Put buttons HIGHER than gradient (2.0)
+                    .zIndex(2f),
                 contentAlignment = Alignment.Center
             ) {
                 // 1. LEFT DIAL: Frequency
                 Box(
                     modifier = Modifier
-                        .offset(x = (-64).dp, y = 16.dp) // Closer to center (-64 instead of -80)
+                        .offset(x = (-64).dp, y = 16.dp)
                         .size(52.dp)
                         .shadow(elevation = 12.dp, shape = CircleShape)
-                        .background(color = Color.White, shape = CircleShape)
-                        .clickable {
+                        .background(color = dialBgColor, shape = CircleShape)
+                        .clickable(enabled = !isOffline) { // ✅ DISABLED OFFLINE
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.openFrequencyModal()
                         },
@@ -780,7 +826,7 @@ fun VoidScreen(
                             val x = index * gap
                             val barHeight = size.height * heightMultiplier
                             val shrinkAmount = (size.height - barHeight) / 2
-                            drawLine(color = sessionColor, start = Offset(x, shrinkAmount), end = Offset(x, size.height - shrinkAmount), strokeWidth = strokeWidth, cap = StrokeCap.Round)
+                            drawLine(color = leftDialContentColor, start = Offset(x, shrinkAmount), end = Offset(x, size.height - shrinkAmount), strokeWidth = strokeWidth, cap = StrokeCap.Round)
                         }
                     }
                 }
@@ -788,17 +834,17 @@ fun VoidScreen(
                 // 2. RIGHT DIAL: Journey Analytics
                 Box(
                     modifier = Modifier
-                        .offset(x = 64.dp, y = 16.dp) // Closer to center (64 instead of 80)
+                        .offset(x = 64.dp, y = 16.dp)
                         .size(52.dp)
                         .shadow(elevation = 12.dp, shape = CircleShape)
-                        .background(color = Color.White, shape = CircleShape)
-                        .clickable {
+                        .background(color = dialBgColor, shape = CircleShape)
+                        .clickable(enabled = !isOffline) { // ✅ DISABLED OFFLINE
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.toggleJourneyOverlay()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = Icons.Outlined.Person, contentDescription = "Journey", tint = Color.Black, modifier = Modifier.size(26.dp))
+                    Icon(imageVector = Icons.Outlined.Person, contentDescription = "Journey", tint = dialIconColor, modifier = Modifier.size(26.dp))
                 }
 
                 // 3. CENTER DIAL: The Whisper Button
@@ -807,15 +853,15 @@ fun VoidScreen(
                         .offset(y = (-12).dp)
                         .size(72.dp)
                         .shadow(elevation = 20.dp, shape = CircleShape)
-                        .background(color = Color.White, shape = CircleShape)
-                        .clickable {
+                        .background(color = dialBgColor, shape = CircleShape)
+                        .clickable(enabled = !isOffline) { // ✅ DISABLED OFFLINE
                             editingEchoId = null
                             editingInitialText = ""
                             showWhisper = true
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Whisper", tint = Color.Black, modifier = Modifier.size(36.dp))
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Whisper", tint = dialIconColor, modifier = Modifier.size(36.dp))
                 }
             }
 
@@ -844,8 +890,17 @@ fun VoidScreen(
         GlassScrim(visible = showWhisper, onDismiss = { showWhisper = false })
         AnimatedVisibility(visible = showWhisper, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }, modifier = Modifier.align(Alignment.TopCenter).zIndex(5f)) {
             key(editingEchoId ?: "new") {
-                WhisperOverlay(onDismiss = { showWhisper = false }, initialText = editingInitialText,
-                    onSend = { t, cat, col -> if (editingEchoId != null) viewModel.updateEcho(editingEchoId!!, t) else viewModel.postEcho(t, cat, col); showWhisper = false })
+                WhisperOverlay(
+                    onDismiss = { showWhisper = false },
+                    initialText = editingInitialText,
+                    onSend = { t, cat, col ->
+                        if (isOffline) {
+                            scope.launch { snackbarHostState.showSnackbar("Saved offline. Will post when connected.") }
+                        }
+                        if (editingEchoId != null) viewModel.updateEcho(editingEchoId!!, t) else viewModel.postEcho(t, cat, col)
+                        showWhisper = false
+                    }
+                )
             }
         }
 
@@ -853,16 +908,32 @@ fun VoidScreen(
         AnimatedVisibility(visible = selectedEchoId != null, enter = fadeIn() + scaleIn(initialScale = 0.9f), exit = fadeOut() + scaleOut(targetScale = 0.9f), modifier = Modifier.fillMaxSize().zIndex(6f)) {
             Box(modifier = Modifier.fillMaxSize()) {
                 cachedEcho?.let { echo ->
-                    DetailOverlay(echo = echo, onDismiss = { selectedEchoId = null; viewModel.loadFeed() },
-                        onReply = { r -> echo.id?.let { viewModel.postReply(it, r) } },
+                    DetailOverlay(
+                        echo = echo,
+                        onDismiss = { selectedEchoId = null; viewModel.loadFeed() },
+                        onReply = { r ->
+                            if (isOffline) {
+                                scope.launch { snackbarHostState.showSnackbar("Reply saved offline. Will post when connected.") }
+                            }
+                            echo.id?.let { viewModel.postReply(it, r) }
+                        },
                         onUpdateReply = { id, c -> viewModel.updateReply(id, c) },
                         onEditEcho = { selectedEchoId = null; editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
-                        onReport = { echoToReport = echo })
+                        onReport = { echoToReport = echo },
+                        onRelate = { echo.id?.let { viewModel.relateToEcho(it) } },
+                        onUnrelate = { echo.id?.let { viewModel.unrelateFromEcho(it) } }
+                    )
                 }
             }
         }
 
-        GlassScrim(visible = showJourneyOverlay, onDismiss = { viewModel.closeJourneyOverlay() })
+        AnimatedVisibility(visible = showJourneyOverlay, enter = fadeIn(tween(300)), exit = fadeOut(tween(300)), modifier = Modifier.zIndex(4f)) {
+            Box(
+                modifier = Modifier.fillMaxSize().clickable(
+                    remember { MutableInteractionSource() },
+                    null
+                ) { viewModel.closeJourneyOverlay() })
+        }
         AnimatedVisibility(
             visible = showJourneyOverlay,
             enter = fadeIn() + slideInVertically { it },
@@ -871,7 +942,7 @@ fun VoidScreen(
         ) {
             JourneyOverlay(
                 stats = viewModel.userStats.collectAsState().value,
-                userEchoes = viewModel.echoes.collectAsState().value.filter { it.signatureId == viewModel.getUserId() },
+                allEchoes = echoes,
                 dominantMood = viewModel.dominantMood.collectAsState().value,
                 activityStreak = viewModel.activityStreak.collectAsState().value,
                 userName = viewModel.displayName.collectAsState().value,
@@ -941,6 +1012,6 @@ fun SpaceHeaderCard(space: String) {
 @Composable
 fun GlassScrim(visible: Boolean, onDismiss: () -> Unit) {
     AnimatedVisibility(visible = visible, enter = fadeIn(tween(300)), exit = fadeOut(tween(300)), modifier = Modifier.zIndex(3f)) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(remember { MutableInteractionSource() }, null) { onDismiss() })
+        Box(modifier = Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { onDismiss() })
     }
 }

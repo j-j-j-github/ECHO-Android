@@ -8,6 +8,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.echo.core.utils.SharedPreferencesManager
+import com.example.echo.core.utils.NetworkMonitor
 import com.example.echo.data.remote.dto.EchoDto
 import com.example.echo.data.remote.dto.NotificationDto
 import com.example.echo.data.remote.dto.UserStatsDto
@@ -40,13 +41,16 @@ class VoidViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val appUpdateManager = AppUpdateManagerFactory.create(context)
+    private val networkMonitor = NetworkMonitor(context)
+
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
     val categories = listOf("All", "Advice", "Vent", "Relationships", "Inner Thoughts")
 
     private val _selectedFeedCategory = MutableStateFlow("All")
     val selectedFeedCategory: StateFlow<String> = _selectedFeedCategory.asStateFlow()
 
-    // ✅ FIXED: Added ': String' type annotation
     fun setFeedCategory(category: String) {
         _selectedFeedCategory.value = category
     }
@@ -109,53 +113,53 @@ class VoidViewModel @Inject constructor(
     private val _displayName = MutableStateFlow<String?>(null)
     val displayName: StateFlow<String?> = _displayName.asStateFlow()
 
+    init {
+        _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
+
+        // ✅ ACTIVE NETWORK OBSERVER
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _isOffline.value = !online
+                if (online) {
+                    repository.syncPendingOfflineData()
+                    loadFeed()
+                    loadJourneyData()
+                }
+            }
+        }
+
+        startSoulSimulation()
+        checkForUpdates()
+    }
+
     fun toggleJourneyOverlay() {
         val current = _showJourneyOverlay.value
-        if (!current) {
-            loadJourneyData()
-        }
+        if (!current) loadJourneyData()
         _showJourneyOverlay.value = !current
     }
 
-    fun closeJourneyOverlay() {
-        _showJourneyOverlay.value = false
-    }
+    fun closeJourneyOverlay() { _showJourneyOverlay.value = false }
 
     private fun loadJourneyData() {
         viewModelScope.launch {
             try {
-                // 1. Fetch live telemetry from Supabase
                 val stats = repository.getUserStats()
-                _userStats.value = stats
+                if (stats != null) {
+                    _userStats.value = stats
+                    _displayName.value = stats.displayName
+                }
 
-                // ✅ Update UI name from DB
-                _displayName.value = stats?.displayName
-
-                // 2. Mood processing
-                val currentEchoes = _echoes.value
+                val myActivity = repository.getUserActivity()
                 val myId = getUserId()
-                val myRecentPosts = currentEchoes.filter { it.signatureId == myId }
 
-                if (myRecentPosts.isNotEmpty()) {
-                    val mode = myRecentPosts.mapNotNull { it.mood }
-                        .groupingBy { it }
-                        .eachCount()
+                if (myActivity.isNotEmpty()) {
+                    val mode = myActivity.mapNotNull { it.mood }
+                        .groupingBy { it }.eachCount()
                         .maxByOrNull { it.value }?.key
+                    _dominantMood.value = mode
 
-                    _dominantMood.value = mode ?: myRecentPosts.first().mood
                     val history = repository.getMoodHistory()
-                    _activityStreak.value = calculateStreak(history)
-                } else {
-                    val history = repository.getMoodHistory()
-                    if (history.isNotEmpty()) {
-                        val historyMode = history.groupingBy { it.mood }
-                            .eachCount()
-                            .maxByOrNull { it.value }?.key
-                        _dominantMood.value = historyMode ?: history.first().mood
-                        _activityStreak.value = calculateStreak(history)
-                    } else {
-                        _dominantMood.value = null
-                    }
+                    _activityStreak.value = calculateStreak(history, myActivity, myId)
                 }
             } catch (e: Exception) {
                 Log.e("JOURNEY_LOG", "Error: ${e.message}")
@@ -163,52 +167,77 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    private fun calculateStreak(history: List<MoodHistoryDto>): Int {
-        if (history.isEmpty()) return 0
-        val zoneId = ZoneId.of("UTC")
+    private fun calculateStreak(history: List<MoodHistoryDto>, allEchoes: List<EchoDto>, userId: String): Int {
+        val zoneId = ZoneId.systemDefault()
         val today = LocalDate.now(zoneId)
+        val activeDates = mutableSetOf<LocalDate>()
 
-        val activeDates = history.mapNotNull {
-            try {
-                Instant.parse(it.createdAt).atZone(zoneId).toLocalDate()
-            } catch (e: Exception) { null }
-        }.distinct().sortedDescending()
+        history.forEach {
+            try { activeDates.add(Instant.parse(it.createdAt).atZone(zoneId).toLocalDate()) } catch (e: Exception) {}
+        }
 
-        if (activeDates.isEmpty()) return 0
-        if (activeDates.first().isBefore(today.minusDays(1))) return 0
+        allEchoes.forEach { echo ->
+            if (echo.signatureId == userId) {
+                try { activeDates.add(Instant.parse(echo.createdAt).atZone(zoneId).toLocalDate()) } catch (e: Exception) {}
+            }
+            echo.replies?.forEach { reply ->
+                try {
+                    val replyClass = reply!!::class.java
+                    val sigId = (replyClass.methods.find { it.name.equals("getSignatureId", ignoreCase = true) }?.invoke(reply) as? String)
+                        ?: (replyClass.methods.find { it.name.equals("getUserId", ignoreCase = true) }?.invoke(reply) as? String)
+                    val createdAt = replyClass.methods.find { it.name.equals("getCreatedAt", ignoreCase = true) }?.invoke(reply) as? String
+
+                    if (sigId == userId && createdAt != null) {
+                        activeDates.add(Instant.parse(createdAt).atZone(zoneId).toLocalDate())
+                    }
+                } catch(e: Exception) {}
+            }
+        }
+
+        val sortedDates = activeDates.sortedDescending()
+        if (sortedDates.isEmpty()) return 0
+        if (sortedDates.first().isBefore(today.minusDays(1))) return 0
 
         var streak = 1
-        for (i in 0 until activeDates.size - 1) {
-            if (ChronoUnit.DAYS.between(activeDates[i + 1], activeDates[i]) == 1L) {
+        for (i in 0 until sortedDates.size - 1) {
+            if (ChronoUnit.DAYS.between(sortedDates[i + 1], sortedDates[i]) == 1L) {
                 streak++
             } else break
         }
         return streak
     }
 
-    // ==========================================
-    // --- IDENTITY MANAGEMENT LOGIC ---
-    // ==========================================
+    fun loadFeed() {
+        viewModelScope.launch {
+            try {
+                // ✅ RELY STRICTLY ON NETWORK MONITOR FOR OFFLINE STATE
+                repository.getEchoes().collect { list ->
+                    _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
+                    _activeCount.value = list.size
+                    updateCount()
+                    if (_showJourneyOverlay.value) loadJourneyData()
+                }
+                checkNotificationStatus()
+            } catch (e: Exception) {
+                Log.e("FEED", "Feed fetch failed, but keeping network state as true to prevent false offline flag.", e)
+            }
+        }
+    }
 
     fun updateDisplayName(newName: String) {
         val cleanName = newName.trim()
         if (cleanName.isBlank()) return
-
         viewModelScope.launch {
             try {
                 _displayName.value = cleanName
-                // ✅ Persists change to Supabase
                 repository.updateUserDisplayName(cleanName)
-            } catch (e: Exception) {
-                Log.e("IDENTITY_SYNC", "Failed: ${e.message}")
-            }
+            } catch (e: Exception) { Log.e("IDENTITY_SYNC", "Failed: ${e.message}") }
         }
     }
 
     suspend fun restoreIdentity(newKey: String): Boolean {
         val cleanKey = newKey.trim()
         if (cleanKey.isBlank() || cleanKey.length < 5) return false
-
         return try {
             val isDatabaseCheckSuccessful = repository.checkIfUserExists(cleanKey)
             if (isDatabaseCheckSuccessful) {
@@ -221,33 +250,17 @@ class VoidViewModel @Inject constructor(
                 loadFeed()
                 loadJourneyData()
                 true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+            } else false
+        } catch (e: Exception) { false }
     }
 
     fun getUserId(): String = SharedPreferencesManager.getInstallationId(context)
 
-    init {
-        _showGetStarted.value = SharedPreferencesManager.isFirstLaunch(context)
-        loadFeed()
-        // ✅ Startup loading of name/stats
-        viewModelScope.launch {
-            loadJourneyData()
-        }
-        startSoulSimulation()
-        checkForUpdates()
-    }
-
     private fun checkForUpdates() {
-        val appUpdateInfoTask = appUpdateManager.appUpdateInfo
-        appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
+        appUpdateManager.appUpdateInfo.addOnSuccessListener { appUpdateInfo ->
             if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
                 appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)
-            ) { /* Update check logic */ }
+            ) { /* Logged */ }
         }
     }
 
@@ -260,21 +273,14 @@ class VoidViewModel @Inject constructor(
     }
 
     private fun sortEchoesByFrequency(list: List<EchoDto>, frequency: Int): List<EchoDto> {
-        return list.sortedWith(compareByDescending<EchoDto> {
-            it.mood == frequency
-        }.thenByDescending {
-            it.mood?.let { m -> kotlin.math.abs(m - frequency) <= 1 } ?: false
-        }.thenByDescending {
-            it.createdAt
-        })
+        return list.sortedWith(compareByDescending<EchoDto> { it.mood == frequency }
+            .thenByDescending { it.mood?.let { m -> kotlin.math.abs(m - frequency) <= 1 } ?: false }
+            .thenByDescending { it.createdAt })
     }
 
     fun handleDeepLink(echoId: String) {
-        // ✅ SUPPRESS FREQUENCY MODAL: The user wants to see a post, don't interrupt them!
         _showFrequencyModal.value = false
-        // Reset the timer so the modal doesn't annoy them right after they close the post
         SharedPreferencesManager.saveLastFrequencyTime(context, System.currentTimeMillis())
-
         viewModelScope.launch {
             if (_echoes.value.isEmpty()) delay(500)
             val echo = repository.getEchoById(echoId)
@@ -288,35 +294,17 @@ class VoidViewModel @Inject constructor(
         _deepLinkEcho.value = null
     }
 
-    fun loadFeed() {
-        viewModelScope.launch {
-            repository.getEchoes().collect { list ->
-                _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
-                _activeCount.value = list.size
-                updateCount()
-                if (_showJourneyOverlay.value) loadJourneyData()
-            }
-            checkNotificationStatus()
-        }
-    }
-
-    fun onRealtimeNotificationReceived() {
-        _hasUnread.value = true
-    }
+    fun onRealtimeNotificationReceived() { _hasUnread.value = true }
 
     fun markGetStartedSeen() {
         SharedPreferencesManager.setFirstLaunchComplete(context)
         _showGetStarted.value = false
     }
 
-    fun replayGetStarted() {
-        _showGetStarted.value = true
-    }
+    fun replayGetStarted() { _showGetStarted.value = true }
 
     private fun checkNotificationStatus() {
-        viewModelScope.launch {
-            _hasUnread.value = repository.hasUnreadNotifications()
-        }
+        viewModelScope.launch { _hasUnread.value = repository.hasUnreadNotifications() }
     }
 
     fun toggleNotificationPanel() {
@@ -329,22 +317,15 @@ class VoidViewModel @Inject constructor(
         _isNotificationPanelOpen.value = !current
     }
 
-    fun closeNotificationPanel() {
-        _isNotificationPanelOpen.value = false
-    }
+    fun closeNotificationPanel() { _isNotificationPanelOpen.value = false }
 
     private fun loadNotifications() {
-        viewModelScope.launch {
-            val list = repository.getUserNotifications()
-            _notifications.value = list
-        }
+        viewModelScope.launch { _notifications.value = repository.getUserNotifications() }
     }
 
     fun openEchoFromNotification(echoId: String, onLoaded: (EchoDto) -> Unit) {
-        // ✅ SUPPRESS FREQUENCY MODAL here too, just in case.
         _showFrequencyModal.value = false
         SharedPreferencesManager.saveLastFrequencyTime(context, System.currentTimeMillis())
-
         viewModelScope.launch {
             SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
             val echo = repository.getEchoById(echoId)
@@ -358,15 +339,25 @@ class VoidViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            delay(1000)
-            repository.getEchoes().collect { list ->
-                _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
-                _activeCount.value = list.size
-                updateCount()
+            try {
+                delay(1000)
+                repository.getEchoes().collect { list ->
+                    // ✅ It only updates the screen if the network call actually succeeds
+                    _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
+                    _activeCount.value = list.size
+                    updateCount()
+                    if (_showJourneyOverlay.value) loadJourneyData()
+                }
+                checkNotificationStatus()
+            } catch (e: Exception) {
+                // 🛑 If it fails (timeout, bad signal), we catch the error here.
+                // The crucial part: We DO NOT wipe _echoes.value!
+                // The user keeps whatever posts were already loaded on their screen.
+                Log.e("REFRESH", "Refresh failed due to slow network: ${e.message}")
+            } finally {
+                // ✅ GUARANTEED to stop the loading spinner, pass or fail
                 _isRefreshing.value = false
-                if (_showJourneyOverlay.value) loadJourneyData()
             }
-            checkNotificationStatus()
         }
     }
 
@@ -389,19 +380,9 @@ class VoidViewModel @Inject constructor(
 
     fun postEcho(content: String, category: String, colorCode: String? = null) {
         viewModelScope.launch {
-            repository.createEcho(
-                content = content,
-                category = category,
-                mood = _sessionFrequency.value,
-                colorCode = colorCode
-            )
+            repository.createEcho(content, category, _sessionFrequency.value, colorCode)
             delay(800)
-            repository.getEchoes().collect { list ->
-                _echoes.value = sortEchoesByFrequency(list, _sessionFrequency.value)
-                loadJourneyData()
-                _activeCount.value = list.size
-                updateCount()
-            }
+            loadFeed()
             checkReviewTrigger()
         }
     }
@@ -409,9 +390,7 @@ class VoidViewModel @Inject constructor(
     private fun checkReviewTrigger() {
         viewModelScope.launch {
             val stats = repository.getUserStats()
-            if (stats?.totalEchoesPosted != null && stats.totalEchoesPosted >= 3) {
-                _showRatePopup.value = true
-            }
+            if (stats?.totalEchoesPosted != null && stats.totalEchoesPosted >= 3) _showRatePopup.value = true
         }
     }
 
@@ -420,15 +399,23 @@ class VoidViewModel @Inject constructor(
             try {
                 val signatureId = SharedPreferencesManager.getInstallationId(context)
                 repository.submitLead(email, signatureId)
-            } catch (e: Exception) {
-                Log.e("LEAD_GEN", "Error: ${e.message}")
-            }
+            } catch (e: Exception) { Log.e("LEAD_GEN", "Error: ${e.message}") }
         }
     }
 
-    fun resetRateTrigger() {
-        _showRatePopup.value = false
+    fun relateToEcho(echoId: String) {
+        viewModelScope.launch {
+            repository.relateToEcho(echoId)
+        }
     }
+
+    fun unrelateFromEcho(echoId: String) {
+        viewModelScope.launch {
+            repository.unrelateFromEcho(echoId)
+        }
+    }
+
+    fun resetRateTrigger() { _showRatePopup.value = false }
 
     fun updateEcho(echoId: String, content: String) {
         viewModelScope.launch {
@@ -460,7 +447,5 @@ class VoidViewModel @Inject constructor(
         }
     }
 
-    fun onEchoClicked(echoId: String) {
-        SharedPreferencesManager.clearUnreadReplyCount(context, echoId)
-    }
+    fun onEchoClicked(echoId: String) { SharedPreferencesManager.clearUnreadReplyCount(context, echoId) }
 }

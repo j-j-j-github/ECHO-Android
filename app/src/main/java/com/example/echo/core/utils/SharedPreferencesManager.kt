@@ -129,4 +129,62 @@ object SharedPreferencesManager {
         val prefs = context.getSharedPreferences("echo_prefs", Context.MODE_PRIVATE)
         return prefs.getLong("last_frequency_time", 0L)
     }
+
+    // ==========================================
+    // --- OFFLINE QUEUE LOGIC ---
+    // ==========================================
+
+    // ECHOES
+    fun savePendingEcho(context: Context, id: String, content: String, category: String, mood: String) {
+        val prefs = context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+        val dataString = "$content|++|$category|++|$mood"
+        prefs.edit().putString("pending_echo_$id", dataString).apply()
+    }
+
+    fun getPendingEchoes(context: Context): Map<String, Map<String, String>> {
+        val prefs = context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+        val result = mutableMapOf<String, Map<String, String>>()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith("pending_echo_") && value is String) {
+                val parts = value.split("|++|")
+                if (parts.size == 3) {
+                    val id = key.removePrefix("pending_echo_")
+                    result[id] = mapOf("content" to parts[0], "category" to parts[1], "mood" to parts[2])
+                }
+            }
+        }
+        return result
+    }
+
+    fun removePendingEcho(context: Context, id: String) {
+        context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+            .edit().remove("pending_echo_$id").apply()
+    }
+
+    // REPLIES
+    fun savePendingReply(context: Context, replyId: String, echoId: String, content: String) {
+        val prefs = context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+        val dataString = "$echoId|++|$content"
+        prefs.edit().putString("pending_reply_$replyId", dataString).apply()
+    }
+
+    fun getPendingReplies(context: Context): Map<String, Map<String, String>> {
+        val prefs = context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+        val result = mutableMapOf<String, Map<String, String>>()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith("pending_reply_") && value is String) {
+                val parts = value.split("|++|")
+                if (parts.size == 2) {
+                    val replyId = key.removePrefix("pending_reply_")
+                    result[replyId] = mapOf("echoId" to parts[0], "content" to parts[1])
+                }
+            }
+        }
+        return result
+    }
+
+    fun removePendingReply(context: Context, replyId: String) {
+        context.getSharedPreferences("void_offline_queue", Context.MODE_PRIVATE)
+            .edit().remove("pending_reply_$replyId").apply()
+    }
 }

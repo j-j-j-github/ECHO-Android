@@ -28,6 +28,10 @@ interface EchoRepository {
 
     suspend fun hasUnreadNotifications(): Boolean
 
+    suspend fun syncPendingOfflineData()
+
+    suspend fun getUserActivity(): List<EchoDto>
+
     fun markNotificationsAsRead()
 
     // --- NEW: JOURNEY & ANALYTICS ---
@@ -40,4 +44,7 @@ interface EchoRepository {
     suspend fun checkIfUserExists(signatureId: String): Boolean
 
     suspend fun updateUserDisplayName(newName: String): Boolean
+
+    suspend fun relateToEcho(echoId: String)
+    suspend fun unrelateFromEcho(echoId: String)
 }

@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import javax.inject.Inject
+import androidx.core.view.WindowCompat
 
 @Serializable
 data class FcmTokenEntry(
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         // --- FORCE 120Hz / MAX REFRESH RATE ---
         enableHighRefreshRate()
@@ -130,6 +132,10 @@ class MainActivity : ComponentActivity() {
             SharedPreferencesManager.clearUnreadReplyCount(this, echoId)
 
             mainViewModel.handleDeepLink(echoId)
+
+            // 🛑 THE FIX: Wipe the extra from the Intent so it never fires twice.
+            // Next time the app is brought to the foreground, this will be null.
+            intent.removeExtra("echo_id")
         }
     }
 

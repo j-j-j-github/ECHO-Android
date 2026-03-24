@@ -22,5 +22,8 @@ data class UserStatsDto(
 
     // --- THIS IS THE MAGIC LINE ---
     @SerialName("display_name")
-    val displayName: String? = null
+    val displayName: String? = null,
+
+    @SerialName("total_relates_received")
+    val totalRelatesReceived: Int = 0
 )

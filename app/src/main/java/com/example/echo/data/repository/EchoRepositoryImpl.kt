@@ -37,48 +37,59 @@ class EchoRepositoryImpl @Inject constructor(
 ) : EchoRepository {
 
     override fun getEchoes(): Flow<List<EchoDto>> = flow {
-        try {
-            val results = supabase.postgrest["echoes"]
-                .select(columns = Columns.list("*", "replies(*)")) {
-                    order("created_at", order = Order.DESCENDING)
-                    limit(50)
-                }.decodeList<EchoDto>()
-                .map { echo ->
-                    echo.copy(replies = echo.replies?.sortedBy { it.createdAt })
-                }
-            emit(results)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emit(emptyList())
-        }
+        // 🚀 We removed the try/catch here.
+        // If Supabase times out, it throws an error to the ViewModel
+        // INSTEAD of silently emitting an empty list that wipes the screen!
+        val results = supabase.postgrest["echoes"]
+            .select(columns = Columns.list("*", "replies(*)")) {
+                order("created_at", order = Order.DESCENDING)
+                limit(500)
+            }.decodeList<EchoDto>()
+            .map { echo ->
+                echo.copy(replies = echo.replies?.sortedBy { it.createdAt })
+            }
+        emit(results)
     }
 
     override suspend fun createEcho(content: String, category: String, mood: Int, colorCode: String?) {
+        val echoId = UUID.randomUUID().toString()
+        val signatureId = SharedPreferencesManager.getInstallationId(context)
+
         try {
             val echo = EchoDto(
-                id = UUID.randomUUID().toString(),
+                id = echoId,
                 content = content,
                 category = category,
                 mood = mood,
-                signatureId = SharedPreferencesManager.getInstallationId(context),
+                signatureId = signatureId,
                 colorCode = colorCode
             )
             supabase.postgrest["echoes"].insert(echo)
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            // 🛑 OFFLINE FIX: Network failed. Save to pending queue.
+            Log.e("OFFLINE_QUEUE", "Network down. Saving Echo locally.")
+            SharedPreferencesManager.savePendingEcho(context, echoId, content, category, mood.toString())
+        }
     }
 
     override suspend fun createReply(echoId: String, content: String) {
+        val signatureId = SharedPreferencesManager.getInstallationId(context)
+
         try {
             val replyMap = mapOf(
                 "echo_id" to echoId,
                 "content" to content,
-                "signature_id" to SharedPreferencesManager.getInstallationId(context)
+                "signature_id" to signatureId
             )
             supabase.postgrest["replies"].insert(replyMap)
-
             SharedPreferencesManager.saveRepliedEcho(context, echoId)
 
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            // 🛑 OFFLINE FIX: Network failed. Save to pending queue.
+            Log.e("OFFLINE_QUEUE", "Network down. Saving Reply locally.")
+            val replyId = UUID.randomUUID().toString()
+            SharedPreferencesManager.savePendingReply(context, replyId, echoId, content)
+        }
     }
 
     override suspend fun updateEcho(echoId: String, newContent: String) {
@@ -175,6 +186,102 @@ class EchoRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun relateToEcho(echoId: String) {
+        try {
+            val mySignature = SharedPreferencesManager.getInstallationId(context)
+
+            // 1. Fetch the Echo to get the Author's ID and current count
+            val targetEcho = supabase.postgrest["echoes"]
+                .select(columns = Columns.list("signature_id", "likes")) {
+                    filter { eq("id", echoId) }
+                }.decodeSingleOrNull<EchoDto>()
+
+            val authorSignature = targetEcho?.signatureId ?: return
+            val currentEchoLikes = targetEcho.likes ?: 0
+
+            // 2. PERMANENT LOG: Prevent double-liking via the UNIQUE constraint in SQL
+            val relateLog = mapOf(
+                "echo_id" to echoId,
+                "sender_signature_id" to mySignature,
+                "receiver_signature_id" to authorSignature
+            )
+            supabase.postgrest["relates_log"].insert(relateLog)
+
+            // 3. EPHEMERAL UPDATE: Update the count on the Echo itself for the live feed
+            supabase.postgrest["echoes"].update(
+                { set("likes", currentEchoLikes + 1) }
+            ) {
+                filter { eq("id", echoId) }
+            }
+
+            // 4. PERMANENT UPDATE: Update the Author's lifetime stats
+            val authorStats = supabase.postgrest["user_stats"]
+                .select { filter { eq("signature_id", authorSignature) } }
+                .decodeSingleOrNull<UserStatsDto>()
+
+            val newLifetimeTotal = (authorStats?.totalRelatesReceived ?: 0) + 1
+
+            supabase.postgrest["user_stats"].update(
+                { set("total_relates_received", newLifetimeTotal) }
+            ) {
+                filter { eq("signature_id", authorSignature) }
+            }
+
+        } catch (e: Exception) {
+            // If this triggers, it's usually because the user already related to this post
+            // (Postgrest will throw an error on the UNIQUE constraint violation).
+            android.util.Log.e("RELATE_SYNC", "Already related or network error: ${e.message}")
+        }
+    }
+
+    override suspend fun unrelateFromEcho(echoId: String) {
+        try {
+            val mySignature = SharedPreferencesManager.getInstallationId(context)
+
+            // 1. DELETE PERMANENT LOG: Remove the record so they can relate again later if they want
+            supabase.postgrest["relates_log"].delete {
+                filter {
+                    eq("echo_id", echoId)
+                    eq("sender_signature_id", mySignature)
+                }
+            }
+
+            // 2. Fetch the Echo to get the Author's ID and current count
+            val targetEcho = supabase.postgrest["echoes"]
+                .select(columns = Columns.list("signature_id", "likes")) {
+                    filter { eq("id", echoId) }
+                }.decodeSingleOrNull<EchoDto>()
+
+            val authorSignature = targetEcho?.signatureId ?: return
+            val currentEchoLikes = targetEcho.likes ?: 0
+
+            // 3. EPHEMERAL UPDATE: Subtract from the live feed (safety check so it never goes below 0)
+            val newLikes = if (currentEchoLikes > 0) currentEchoLikes - 1 else 0
+            supabase.postgrest["echoes"].update(
+                { set("likes", newLikes) }
+            ) {
+                filter { eq("id", echoId) }
+            }
+
+            // 4. PERMANENT UPDATE: Subtract from the Author's lifetime stats
+            val authorStats = supabase.postgrest["user_stats"]
+                .select { filter { eq("signature_id", authorSignature) } }
+                .decodeSingleOrNull<UserStatsDto>()
+
+            val currentLifetime = authorStats?.totalRelatesReceived ?: 0
+            val newLifetimeTotal = if (currentLifetime > 0) currentLifetime - 1 else 0
+
+            supabase.postgrest["user_stats"].update(
+                { set("total_relates_received", newLifetimeTotal) }
+            ) {
+                filter { eq("signature_id", authorSignature) }
+            }
+
+        } catch (e: Exception) {
+            android.util.Log.e("RELATE_SYNC", "Error unrelating: ${e.message}")
+        }
+    }
+
     // ==========================================
     // --- JOURNEY, ANALYTICS & IDENTITY ---
     // ==========================================
@@ -261,6 +368,65 @@ class EchoRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    override suspend fun getUserActivity(): List<EchoDto> {
+        return try {
+            val mySignature = SharedPreferencesManager.getInstallationId(context)
+
+            // 🔥 This query fetches ONLY your personal posts, no matter how old they are
+            supabase.postgrest["echoes"]
+                .select(columns = Columns.list("*", "replies(*)")) {
+                    filter { eq("signature_id", mySignature) }
+                    order("created_at", order = Order.DESCENDING)
+                    // No limit here so the calendar gets your full history
+                }.decodeList<EchoDto>()
+                .map { echo ->
+                    echo.copy(replies = echo.replies?.sortedBy { it.createdAt })
+                }
+        } catch (e: Exception) {
+            Log.e("REPO_ERROR", "Failed to fetch personal activity: ${e.message}")
+            emptyList()
+        }
+    }
+
+    // Add this to the bottom of EchoRepositoryImpl.kt
+    override suspend fun syncPendingOfflineData() {
+        try {
+            // 1. Check for Pending Echoes
+            val pendingEchoes = SharedPreferencesManager.getPendingEchoes(context)
+            if (pendingEchoes.isNotEmpty()) {
+                pendingEchoes.forEach { (id, data) ->
+                    val echo = EchoDto(
+                        id = id,
+                        content = data["content"] ?: "",
+                        category = data["category"] ?: "Inner Thoughts",
+                        mood = data["mood"]?.toIntOrNull() ?: 2,
+                        signatureId = SharedPreferencesManager.getInstallationId(context),
+                        colorCode = null
+                    )
+                    supabase.postgrest["echoes"].insert(echo)
+                    SharedPreferencesManager.removePendingEcho(context, id)
+                }
+            }
+
+            // 2. Check for Pending Replies
+            val pendingReplies = SharedPreferencesManager.getPendingReplies(context)
+            if (pendingReplies.isNotEmpty()) {
+                pendingReplies.forEach { (replyId, data) ->
+                    val replyMap = mapOf(
+                        "echo_id" to data["echoId"],
+                        "content" to data["content"],
+                        "signature_id" to SharedPreferencesManager.getInstallationId(context)
+                    )
+                    supabase.postgrest["replies"].insert(replyMap)
+                    SharedPreferencesManager.saveRepliedEcho(context, data["echoId"] ?: "")
+                    SharedPreferencesManager.removePendingReply(context, replyId)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("OFFLINE_SYNC", "Still offline. Keeping items in queue.")
         }
     }
 }
