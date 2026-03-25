@@ -248,9 +248,16 @@ fun JourneyOverlay(
                     Text(moodName, style = VoidTypography.displayLarge.copy(fontSize = 24.sp, letterSpacing = 8.sp, color = moodColor, fontWeight = FontWeight.ExtraLight))
                     Spacer(modifier = Modifier.height(56.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { TelemetryStat("ECHOES POSTED", stats?.totalEchoesPosted?.toString() ?: "0"); TelemetryStat("ACTIVITY STREAK", "$activityStreak days") }
+                    // ✅ REPLACED ACTIVITY STREAK WITH RELATES RECEIVED (2x2 Grid)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TelemetryStat("ECHOES POSTED", stats?.totalEchoesPosted?.toString() ?: "0")
+                        TelemetryStat("RELATES RECEIVED", stats?.totalRelatesReceived?.toString() ?: "0")
+                    }
                     Spacer(modifier = Modifier.height(32.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { TelemetryStat("RESONANCES SENT", stats?.totalResonancesSent?.toString() ?: "0"); TelemetryStat("WHISPERS RECEIVED", stats?.totalResonancesReceived?.toString() ?: "0") }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TelemetryStat("RESONANCES SENT", stats?.totalResonancesSent?.toString() ?: "0")
+                        TelemetryStat("WHISPERS RECEIVED", stats?.totalResonancesReceived?.toString() ?: "0")
+                    }
 
                     Spacer(modifier = Modifier.height(64.dp))
 
@@ -263,7 +270,7 @@ fun JourneyOverlay(
 
                     Spacer(modifier = Modifier.height(48.dp))
 
-                    ConsoleSectionHeader("SIGNAL CALENDAR:", { activeHelpSection = if(activeHelpSection=="cal") null else "cal" }, if(activeHelpSection=="cal") "Your activity heatmap for the last 91 days combining posts and resonances." else null)
+                    ConsoleSectionHeader("SIGNAL CALENDAR:", { activeHelpSection = if(activeHelpSection=="cal") null else "cal" }, if(activeHelpSection=="cal") "Your activity heatmap combining posts and resonances." else null)
                     SignalHeatmap(allEchoes, userSignatureId)
                     ActivityLegend()
 
@@ -286,7 +293,7 @@ fun JourneyOverlay(
                             .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        ConsoleSectionHeader("SOUL ALIAS:", { activeHelpSection = if(activeHelpSection=="alias") null else "alias" }, if(activeHelpSection=="alias") "Your spectral name. Visible only to you." else null)
+                        ConsoleSectionHeader("SOUL NAME:", { activeHelpSection = if(activeHelpSection=="alias") null else "alias" }, if(activeHelpSection=="alias") "Your spectral name. Visible only to you." else null)
 
                         if (!isEditingName) {
                             Box(

@@ -30,12 +30,16 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
@@ -83,6 +87,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 @Composable
 fun VoidScreen(
@@ -115,9 +122,12 @@ fun VoidScreen(
 
     var displayMessage by remember { mutableStateOf<Pair<String, String>>(Pair("Welcome back,", "$justName.")) }
 
-    // ✅ STATE MACHINE: Handles Offline -> Connected -> Normal transitions
     var wasOffline by remember { mutableStateOf(false) }
     var showReconnected by remember { mutableStateOf(false) }
+
+    // ✅ ECHOES FOR YOU ENGINE STATE
+    var excludedForYou by remember { mutableStateOf(setOf<String>()) }
+    var pendingViewedForYou by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(isOffline) {
         if (isOffline) {
@@ -125,13 +135,12 @@ fun VoidScreen(
             showReconnected = false
         } else if (wasOffline) {
             showReconnected = true
-            delay(4000) // Flash "Connected back" for 4 seconds
+            delay(4000)
             showReconnected = false
             wasOffline = false
         }
     }
 
-    // ✅ MASTER BANNER LOOP
     LaunchedEffect(sessionFrequency, currentHour, justName, isOffline, showReconnected) {
         if (isOffline) {
             displayMessage = Pair("Disconnected from", "the Void.")
@@ -163,17 +172,16 @@ fun VoidScreen(
         }
     }
 
-    // ✅ DYNAMIC COLORS FOR THE BANNER TEXT
     val primaryTextColor = when {
-        isOffline -> Color(0xFFFF453A).copy(alpha = 0.8f) // Red
-        showReconnected -> Color(0xFF34C759).copy(alpha = 0.8f) // Green
-        else -> Color.White.copy(alpha = 0.5f) // White
+        isOffline -> Color(0xFFFF453A).copy(alpha = 0.8f)
+        showReconnected -> Color(0xFF34C759).copy(alpha = 0.8f)
+        else -> Color.White.copy(alpha = 0.5f)
     }
 
     val secondaryTextColor = when {
-        isOffline -> Color(0xFFFF453A) // Bright Red
-        showReconnected -> Color(0xFF34C759) // Bright Green
-        else -> NeonWhite // White
+        isOffline -> Color(0xFFFF453A)
+        showReconnected -> Color(0xFF34C759)
+        else -> NeonWhite
     }
 
     val currentMoodName = when (sessionFrequency) {
@@ -357,6 +365,7 @@ fun VoidScreen(
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (isRefreshing || isSnapping) return Offset.Zero
+
                 if (pullOffsetY > 0f && available.y < 0f) {
                     val newOffset = (pullOffsetY + available.y).coerceAtLeast(0f)
                     val consumed = pullOffsetY - newOffset
@@ -365,15 +374,20 @@ fun VoidScreen(
                 }
                 return Offset.Zero
             }
+
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (isRefreshing || isSnapping) return Offset.Zero
-                if (source == NestedScrollSource.Drag && available.y > 0f) {
+
+                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+
+                if (source == NestedScrollSource.Drag && available.y > 0f && isAtTop) {
                     val newOffset = (pullOffsetY + available.y * 0.45f).coerceAtMost(maxDragPx)
                     pullOffsetY = newOffset
                     return Offset(0f, available.y)
                 }
                 return Offset.Zero
             }
+
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (isRefreshing || isSnapping) return Velocity.Zero
                 if (pullOffsetY >= refreshTriggerPx) {
@@ -390,7 +404,11 @@ fun VoidScreen(
     }
 
     LaunchedEffect(isRefreshing) {
-        if (!isRefreshing && pullOffsetY > 0f) snapTo(0f)
+        if (!isRefreshing) {
+            excludedForYou = excludedForYou + pendingViewedForYou
+            pendingViewedForYou = emptySet()
+            if (pullOffsetY > 0f) snapTo(0f)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(VoidBlack)) {
@@ -470,7 +488,7 @@ fun VoidScreen(
                         )
                 )
 
-                // --- ELEGANT LEFT-ALIGNED GREETING (WITH CROSSFADE) ---
+                // --- ELEGANT LEFT-ALIGNED GREETING ---
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -526,7 +544,7 @@ fun VoidScreen(
                                         style = TextStyle(
                                             fontFamily = FontFamily.Serif,
                                             fontSize = 20.sp,
-                                            color = primaryTextColor, // ✅ APPLIES DYNAMIC COLOR
+                                            color = primaryTextColor,
                                             fontWeight = FontWeight.Normal
                                         )
                                     )
@@ -536,7 +554,7 @@ fun VoidScreen(
                                         style = TextStyle(
                                             fontFamily = FontFamily.Serif,
                                             fontSize = 28.sp,
-                                            color = secondaryTextColor, // ✅ APPLIES DYNAMIC COLOR
+                                            color = secondaryTextColor,
                                             fontWeight = FontWeight.Light,
                                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                         )
@@ -644,13 +662,24 @@ fun VoidScreen(
                             if (currentCategory == "All") echoes else echoes.filter { it.category == currentCategory }
                         }
 
+                        val echoesForYou = remember(animatingEchoes, sessionFrequency, excludedForYou) {
+                            val eligible = animatingEchoes.filter {
+                                it.replies.isNullOrEmpty() && !excludedForYou.contains(it.id)
+                            }
+                            eligible.sortedBy { abs((it.mood ?: 2) - sessionFrequency) }.take(5)
+                        }
+
+                        val echoesForYouIds = echoesForYou.mapNotNull { it.id }.toSet()
+
+                        val mainFeedEchoes = animatingEchoes.filter { it.id !in echoesForYouIds }
+
                         val now = Instant.now()
                         val sixHoursAgo = now.minus(6, ChronoUnit.HOURS)
 
-                        val recentEchoes = animatingEchoes.filter {
+                        val recentEchoes = mainFeedEchoes.filter {
                             try { Instant.parse(it.createdAt).isAfter(sixHoursAgo) } catch (e: Exception) { false }
                         }
-                        val olderEchoes = animatingEchoes.filter {
+                        val olderEchoes = mainFeedEchoes.filter {
                             try { Instant.parse(it.createdAt).isBefore(sixHoursAgo) } catch (e: Exception) { true }
                         }
 
@@ -698,6 +727,86 @@ fun VoidScreen(
                                 }
                             }
                             else {
+                                if (echoesForYou.isNotEmpty()) {
+                                    item(span = { GridItemSpan(2) }) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "ECHOES FOR YOU",
+                                                style = VoidTypography.labelSmall.copy(color = NeonWhite, fontSize = 10.sp, letterSpacing = 4.sp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Box(modifier = Modifier.width(24.dp).height(1.dp).background(Color.White.copy(alpha = 0.3f)))
+                                        }
+                                    }
+
+                                    item(span = { GridItemSpan(2) }) {
+                                        val pagerState = rememberPagerState(pageCount = { echoesForYou.size })
+                                        val pagerScope = rememberCoroutineScope()
+
+                                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                                HorizontalPager(
+                                                    state = pagerState,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    contentPadding = PaddingValues(horizontal = 0.dp),
+                                                    pageSpacing = 12.dp
+                                                ) { page ->
+                                                    val echo = echoesForYou[page]
+
+                                                    EchoBannerCard(
+                                                        echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies,
+                                                        onReport = { echoToReport = echo },
+                                                        onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                                        onClick = {
+                                                            echo.id?.let { pendingViewedForYou = pendingViewedForYou + it }
+                                                            selectedEchoId = echo.id
+                                                        },
+                                                        onRelate = { echo.id?.let { viewModel.relateToEcho(it) } },
+                                                        onUnrelate = { echo.id?.let { viewModel.unrelateFromEcho(it) } }
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(16.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                IconButton(
+                                                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(max(0, pagerState.currentPage - 1)) } },
+                                                    enabled = pagerState.currentPage > 0,
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Prev", tint = if (pagerState.currentPage > 0) Stone400 else Color.Transparent)
+                                                }
+
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp)) {
+                                                    repeat(echoesForYou.size) { index ->
+                                                        val isSelected = pagerState.currentPage == index
+                                                        val dotWidth by animateDpAsState(if (isSelected) 16.dp else 6.dp, label = "dotWidth")
+                                                        val dotColor by animateColorAsState(if (isSelected) NeonWhite else Color.White.copy(0.3f), label = "dotColor")
+                                                        Box(modifier = Modifier.height(6.dp).width(dotWidth).clip(CircleShape).background(dotColor))
+                                                    }
+                                                }
+
+                                                IconButton(
+                                                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(min(echoesForYou.size - 1, pagerState.currentPage + 1)) } },
+                                                    enabled = pagerState.currentPage < echoesForYou.size - 1,
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next", tint = if (pagerState.currentPage < echoesForYou.size - 1) Stone400 else Color.Transparent)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ✅ REMOVED ANIMATED VISIBILITY WRAPPER FROM ALL FEED CARDS
                                 if (recentEchoes.isNotEmpty()) {
                                     item(span = { GridItemSpan(2) }) {
                                         Column(
@@ -713,21 +822,14 @@ fun VoidScreen(
                                         }
                                     }
                                     items(items = recentEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
-                                        var isVisible by remember { mutableStateOf(false) }
-                                        LaunchedEffect(Unit) { isVisible = true }
-
-                                        Column {
-                                            AnimatedVisibility(
-                                                visible = isVisible,
-                                                enter = fadeIn(animationSpec = tween(600)) + slideInVertically(animationSpec = tween(600)) { it / 6 }
-                                            ) {
-                                                EchoCard(
-                                                    echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
-                                                    onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
-                                                    onClick = { selectedEchoId = echo.id }
-                                                )
-                                            }
-                                        }
+                                        EchoCard(
+                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies,
+                                            onReport = { echoToReport = echo },
+                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                            onClick = { selectedEchoId = echo.id },
+                                            onRelate = { echo.id?.let { viewModel.relateToEcho(it) } },
+                                            onUnrelate = { echo.id?.let { viewModel.unrelateFromEcho(it) } }
+                                        )
                                     }
                                 }
 
@@ -746,21 +848,14 @@ fun VoidScreen(
                                         }
                                     }
                                     items(items = olderEchoes, key = { it.id ?: "error_${it.hashCode()}" }) { echo ->
-                                        var isVisible by remember { mutableStateOf(false) }
-                                        LaunchedEffect(Unit) { isVisible = true }
-
-                                        Column {
-                                            AnimatedVisibility(
-                                                visible = isVisible,
-                                                enter = fadeIn(animationSpec = tween(600)) + slideInVertically(animationSpec = tween(600)) { it / 6 }
-                                            ) {
-                                                EchoCard(
-                                                    echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies, onReport = { echoToReport = echo },
-                                                    onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
-                                                    onClick = { selectedEchoId = echo.id }
-                                                )
-                                            }
-                                        }
+                                        EchoCard(
+                                            echoId = echo.id ?: "", content = echo.content, createdAt = echo.createdAt, updatedAt = echo.updatedAt, colorCode = echo.colorCode, signatureId = echo.signatureId, category = echo.category, replies = echo.replies,
+                                            onReport = { echoToReport = echo },
+                                            onEdit = { editingEchoId = echo.id; editingInitialText = echo.content; showWhisper = true },
+                                            onClick = { selectedEchoId = echo.id },
+                                            onRelate = { echo.id?.let { viewModel.relateToEcho(it) } },
+                                            onUnrelate = { echo.id?.let { viewModel.unrelateFromEcho(it) } }
+                                        )
                                     }
                                 }
                             }

@@ -101,7 +101,8 @@ fun FrequencyModal(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Transparent)
-                .clickable(remember { MutableInteractionSource() }, null) { onDismiss() },
+                // ✅ CHANGED: Removed onDismiss() so tapping outside does nothing
+                .clickable(remember { MutableInteractionSource() }, null) { },
             contentAlignment = Alignment.Center
         ) {
             Box(
