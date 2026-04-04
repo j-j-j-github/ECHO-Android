@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -40,17 +42,20 @@ import androidx.compose.ui.unit.sp
 import com.example.echo.core.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 
 @Composable
 fun WhisperOverlay(
     onDismiss: () -> Unit,
-    onSend: (String, String, String?) -> Unit,
+    onSend: (String, String, String?, Boolean) -> Unit,
     initialText: String = "",
-    initialCategory: String = ""
+    initialCategory: String = "",
+    currentEnergy: Int = 0
 ) {
     var text by remember { mutableStateOf(initialText) }
 
-    // ✅ AUTO-SELECT SPACE: Sets to empty if "All", otherwise uses the initialCategory
     val actualInitialSpace = if (initialCategory.equals("All", ignoreCase = true)) "" else initialCategory
     var selectedSpace by remember { mutableStateOf(actualInitialSpace) }
 
@@ -63,44 +68,69 @@ fun WhisperOverlay(
 
     val isEditing = initialText.isNotEmpty()
 
-    // ✅ SUPER USER DETECTION
     val textUpper = text.uppercase()
     val isSuperUserPost = textUpper.contains("#CREATOR") ||
             textUpper.contains("#ALERT") ||
             textUpper.contains("#UPDATE")
 
-    // ✅ VALIDATION LOGIC
     val isContentValid = text.trim().length >= 20
     val isSpaceValid = selectedSpace.isNotEmpty() || isEditing || isSuperUserPost
     val isReadyToPost = isContentValid && isSpaceValid
 
-    // ✅ SMOOTH FLUID GLOW CALCULATION
-    // First, get the raw mathematical progress (0.0 to 1.0)
-    val rawProgress = (text.trim().length / 20f).coerceIn(0f, 1f)
+    val canSpotlight = currentEnergy >= 100 && !isEditing
+    var useSpotlight by remember { mutableStateOf(false) }
 
-    // Then, animate it smoothly so the light swells and recedes organically instead of snapping
+    val rawProgress = (text.trim().length / 20f).coerceIn(0f, 1f)
     val smoothProgress by animateFloatAsState(
         targetValue = rawProgress,
         animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing),
         label = "smoothProgress"
     )
 
-    // ✅ PREMIUM ICON ROTATION & TINT
-    // Rotates 90 degrees clockwise (to point right) when text reaches 20 chars
     val arrowRotation by animateFloatAsState(
         targetValue = if (isContentValid) 90f else 0f,
         animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
         label = "arrowRotation"
     )
 
-    // Smoothly transitions the icon color from muted gray to deep black as the background brightens
+    val screenBackgroundColor by animateColorAsState(
+        targetValue = if (useSpotlight) Color.White else VoidBlack,
+        animationSpec = tween(600, easing = FastOutSlowInEasing),
+        label = "screenBackgroundColor"
+    )
+
+    val primaryTextColor by animateColorAsState(
+        targetValue = if (useSpotlight) VoidBlack else NeonWhite,
+        animationSpec = tween(600),
+        label = "primaryTextColor"
+    )
+
+    val secondaryTextColor by animateColorAsState(
+        targetValue = if (useSpotlight) VoidBlack.copy(0.6f) else Color.White.copy(0.5f),
+        animationSpec = tween(600),
+        label = "secondaryTextColor"
+    )
+
     val iconTint by animateColorAsState(
-        targetValue = if (isContentValid) VoidBlack else Stone400,
+        targetValue = if (isContentValid) {
+            if (useSpotlight) NeonWhite else VoidBlack
+        } else {
+            if (useSpotlight) Color.LightGray else Stone400
+        },
         animationSpec = tween(durationMillis = 500),
         label = "iconTint"
     )
 
-    // Smoothly expands the drop shadow when fully ready
+    val submitButtonBgColor by animateColorAsState(
+        targetValue = if (useSpotlight) VoidBlack else Stone800,
+        animationSpec = tween(600), label = "submitBtnBg"
+    )
+
+    val submitButtonProgressColor by animateColorAsState(
+        targetValue = if (useSpotlight) VoidBlack else Color.White.copy(alpha = smoothProgress),
+        animationSpec = tween(600), label = "submitBtnProgress"
+    )
+
     val buttonShadow by animateDpAsState(
         targetValue = if (isReadyToPost) 24.dp else 0.dp,
         animationSpec = tween(durationMillis = 600),
@@ -111,6 +141,41 @@ fun WhisperOverlay(
     val rotation = remember { Animatable(0f) }
     val iconSlideOffset = remember { Animatable(20f) }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "gradientTransition")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "gradientAngle"
+    )
+
+    val spotlightColors = listOf(
+        Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFF06B6D4), Color(0xFF10B981), Color(0xFF84CC16),
+        Color(0xFFEAB308), Color(0xFFF97316), Color(0xFFEF4444), Color(0xFFEC4899), Color(0xFFD946EF),
+        Color(0xFF8B5CF6)
+    )
+
+    val animatedGradient = remember(angle) {
+        val rad = angle * (PI / 180f)
+        val radius = 300f
+        val startOffset = Offset(
+            x = (cos(rad) * radius).toFloat() + radius,
+            y = (sin(rad) * radius).toFloat() + radius
+        )
+        val endOffset = Offset(
+            x = (cos(rad + PI) * radius).toFloat() + radius,
+            y = (sin(rad + PI) * radius).toFloat() + radius
+        )
+        Brush.linearGradient(
+            colors = spotlightColors,
+            start = startOffset,
+            end = endOffset
+        )
+    }
+
     LaunchedEffect(Unit) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         if (isEditing) {
@@ -120,13 +185,14 @@ fun WhisperOverlay(
         }
     }
 
-    // ✅ UPDATED SECRET MAP WITH NEW KEYWORDS
     val secretMap = mapOf("#Alert" to "#FF453A", "#Update" to "#4ADE80", "#Creator" to "#FFFFFF")
 
-    LaunchedEffect(Unit) {
-        delay(100)
-        focusRequester.requestFocus()
-        keyboardController?.show()
+    LaunchedEffect(focusRequester) {
+        delay(200)
+        try {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        } catch (e: Exception) {}
     }
 
     val handleSend = {
@@ -142,10 +208,8 @@ fun WhisperOverlay(
         }
 
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-
-        // ✅ CATEGORY OVERRIDE: Default to "All" if Super User and no space selected
         val finalSpace = if (isSuperUserPost && selectedSpace.isEmpty()) "All" else selectedSpace.ifEmpty { "Random" }
-        onSend(cleanText, finalSpace, detectedColor)
+        onSend(cleanText, finalSpace, detectedColor, useSpotlight)
     }
 
     val triggerDeniedAnimation = {
@@ -158,58 +222,53 @@ fun WhisperOverlay(
         }
     }
 
-    // Outer Wrapper: Handles keyboard floating logic dynamically
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Transparent)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
-            .imePadding() // Float over keyboard
+            .imePadding()
+            // ✅ FIX: Added a 16dp gap between the keyboard and the bottom of the popup box
+            .padding(bottom = 16.dp)
             .navigationBarsPadding(),
         contentAlignment = Alignment.TopCenter
     ) {
 
-        // --- PREMIUM GLASS CARD ---
         Box(
             modifier = Modifier
-                // ✅ TASKBAR LOCK: Uses actual system WindowInsets to perfectly avoid the top status bar!
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp, start = 16.dp, end = 16.dp)
                 .offset(x = shakeOffset.value.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(32.dp))
-                .background(VoidBlack)
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(32.dp))
+                .background(screenBackgroundColor)
+                .border(1.dp, if (useSpotlight) VoidBlack.copy(0.1f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(32.dp))
                 .clickable(enabled = false) {}
         ) {
-            // Elegant Top Glass Gradient
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .background(Brush.verticalGradient(listOf(Color.White.copy(0.08f), Color.Transparent)))
+                    // ✅ We use the animated screenBackgroundColor directly here for smooth top-fade
+                    .background(Brush.verticalGradient(listOf(screenBackgroundColor.copy(alpha = 0.05f), Color.Transparent)))
             )
 
-            // --- MAIN CONTENT COLUMN (Scrollable so it never breaks layout) ---
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 500.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(top = 28.dp, bottom = 100.dp) // Extra bottom padding for the floating button
+                    .padding(top = 28.dp, bottom = 100.dp)
             ) {
                 // --- HEADER ---
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(bottom = 20.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 20.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
                     Column {
                         Text(
-                            text = if (isEditing) "RECAST YOUR ECHO" else "RELEASE YOUR ECHO",
-                            style = VoidTypography.displayLarge.copy(fontSize = 20.sp, letterSpacing = 3.sp, color = NeonWhite)
+                            text = if (isEditing) "RECAST YOUR ECHO" else if (useSpotlight) "ECHO TO SPOTLIGHT" else "RELEASE YOUR ECHO",
+                            style = VoidTypography.displayLarge.copy(fontSize = 20.sp, letterSpacing = 3.sp, color = primaryTextColor)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -217,14 +276,14 @@ fun WhisperOverlay(
                             style = VoidTypography.labelSmall.copy(
                                 fontSize = 9.sp,
                                 letterSpacing = 2.sp,
-                                color = if (!isReadyToPost && text.isNotEmpty()) Color(0xFFFF453A) else Color.White.copy(alpha = 0.5f)
+                                color = if (!isReadyToPost && text.isNotEmpty()) Color(0xFFFF453A) else secondaryTextColor
                             )
                         )
                     }
                     Text(
                         text = "${text.length} / 500",
                         style = VoidTypography.labelSmall.copy(
-                            color = if (!isContentValid && text.isNotEmpty()) Color(0xFFFF453A) else Color.White.copy(alpha = 0.5f),
+                            color = if (!isContentValid && text.isNotEmpty()) Color(0xFFFF453A) else secondaryTextColor,
                             fontSize = 10.sp
                         )
                     )
@@ -234,7 +293,7 @@ fun WhisperOverlay(
                 if (!isEditing) {
                     Text(
                         text = "CHOOSE A SPACE",
-                        style = VoidTypography.labelSmall.copy(color = Color.White.copy(alpha = 0.3f), letterSpacing = 2.sp, fontSize = 9.sp),
+                        style = VoidTypography.labelSmall.copy(color = secondaryTextColor, letterSpacing = 2.sp, fontSize = 9.sp),
                         modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 10.dp)
                     )
 
@@ -249,136 +308,118 @@ fun WhisperOverlay(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
-                                        .background(if (isSelected) NeonWhite else Stone900)
-                                        .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            selectedSpace = space
-                                        }
+                                        .background(if (isSelected) primaryTextColor else (if (useSpotlight) Color(0xFFF3F4F6) else Stone900))
+                                        .border(1.dp, if (isSelected) Color.Transparent else (if (useSpotlight) VoidBlack.copy(0.1f) else Color.White.copy(alpha = 0.1f)), RoundedCornerShape(20.dp))
+                                        .clickable { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); selectedSpace = space }
                                         .padding(horizontal = 18.dp, vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = space.uppercase(),
-                                        style = VoidTypography.labelSmall.copy(
-                                            color = if (isSelected) VoidBlack else Stone400,
-                                            letterSpacing = 1.sp,
-                                            fontSize = 11.sp
-                                        )
+                                        style = VoidTypography.labelSmall.copy(color = if (isSelected) screenBackgroundColor else secondaryTextColor, letterSpacing = 1.sp, fontSize = 11.sp)
                                     )
                                 }
                             }
                         }
 
                         Row(modifier = Modifier.matchParentSize()) {
-                            Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(VoidBlack, Color.Transparent))))
+                            Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(screenBackgroundColor, Color.Transparent))))
                             Spacer(modifier = Modifier.weight(1f))
-                            Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, VoidBlack))))
+                            Box(modifier = Modifier.fillMaxHeight().width(24.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, screenBackgroundColor))))
                         }
                     }
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 24.dp))
+                HorizontalDivider(color = if (useSpotlight) VoidBlack.copy(0.08f) else Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 24.dp))
 
                 // --- TEXT AREA ---
                 Box(modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp).padding(horizontal = 24.dp, vertical = 20.dp)) {
                     if (text.isEmpty()) {
-                        // ✅ NEW EXPANDED PLACEHOLDER
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(
                                 text = "Write what's on your mind...",
-                                style = TextStyle(
-                                    fontFamily = FontFamily.Serif,
-                                    fontSize = 22.sp,
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                )
+                                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 22.sp, color = secondaryTextColor, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                             )
                             Text(
-                                text = "Choose your frequency.\n" +
-                                        "Write your feelings.\n" +
-                                        "Find your resonance.",
-                                style = VoidTypography.bodyLarge.copy(
-                                    fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.2f),
-                                    lineHeight = 18.sp,
-                                    letterSpacing = 1.sp
-                                )
+                                text = "Choose your frequency.\nWrite your feelings.\nFind your resonance.",
+                                style = VoidTypography.bodyLarge.copy(fontSize = 12.sp, color = secondaryTextColor.copy(alpha = 0.4f), lineHeight = 18.sp, letterSpacing = 1.sp)
                             )
                         }
                     }
                     BasicTextField(
                         value = text,
                         onValueChange = { if (it.length <= 500) text = it },
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 22.sp,
-                            color = NeonWhite,
-                            lineHeight = 30.sp
-                        ),
-                        cursorBrush = SolidColor(NeonWhite),
+                        textStyle = TextStyle(fontFamily = FontFamily.Serif, fontSize = 22.sp, color = primaryTextColor, lineHeight = 30.sp),
+                        cursorBrush = SolidColor(primaryTextColor),
                         modifier = Modifier.fillMaxSize().focusRequester(focusRequester)
                     )
                 }
             }
-        }
 
-        // --- FLOATING ACTION LAYER ---
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "CANCEL",
-                    style = VoidTypography.labelSmall.copy(letterSpacing = 2.sp, fontSize = 11.sp),
-                    color = Color.White.copy(alpha = 0.5f)
+            // ✅ FIX: Use the animated screenBackgroundColor to ensure the fade is buttery smooth and perfectly matches the main background
+            val floatingGradient = Brush.verticalGradient(
+                listOf(
+                    Color.Transparent,
+                    screenBackgroundColor.copy(alpha = 0.95f),
+                    screenBackgroundColor
                 )
-            }
+            )
 
-            // --- PREMIUM DYNAMIC GLOW BUTTON ---
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(64.dp)
-                    .shadow(buttonShadow, CircleShape, spotColor = Color.White.copy(alpha = 0.5f))
-                    .clip(CircleShape)
-                    .background(Brush.verticalGradient(listOf(Stone800, Stone900)))
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.1f + (0.9f * smoothProgress)), // Smoothly brightens border
-                        shape = CircleShape
-                    )
-                    .clickable { if (isReadyToPost) handleSend() else triggerDeniedAnimation() },
-                contentAlignment = Alignment.Center
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(floatingGradient)
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 40.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // ✅ Smoothly expanding white core based on typing progress
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onDismiss) {
+                        Text("CANCEL", style = VoidTypography.labelSmall.copy(letterSpacing = 2.sp, fontSize = 11.sp), color = secondaryTextColor)
+                    }
+
+                    androidx.compose.animation.AnimatedVisibility(visible = canSpotlight) {
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .then(if (useSpotlight) Modifier.background(animatedGradient) else Modifier.background(if (isContentValid) Color.White.copy(0.1f) else Color.White.copy(0.05f)))
+                                .then(if (useSpotlight) Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.3f), Color.Transparent, Color.Black.copy(alpha = 0.2f)))) else Modifier)
+                                .border(1.dp, if (useSpotlight) Color.White.copy(0.4f) else Color.White.copy(0.2f), RoundedCornerShape(16.dp))
+                                .clickable { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); useSpotlight = !useSpotlight }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = "Spotlight", tint = if (useSpotlight) Color.White else Color.White.copy(0.5f), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (useSpotlight) "SPOTLIGHT ON" else "SPOTLIGHT OFF",
+                                    style = VoidTypography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp, letterSpacing = 1.sp).merge(if (useSpotlight) TextStyle(color = Color.White) else TextStyle(brush = animatedGradient))
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.White.copy(alpha = smoothProgress))
-                )
+                        .size(64.dp)
+                        .shadow(buttonShadow, CircleShape, spotColor = if (useSpotlight) VoidBlack.copy(0.3f) else Color.White.copy(alpha = 0.5f))
+                        .clip(CircleShape)
+                        .background(submitButtonBgColor)
+                        .border(1.dp, if (useSpotlight) VoidBlack else Color.White.copy(alpha = (0.1f + (0.9f * smoothProgress)).coerceIn(0f, 1f)), CircleShape)
+                        .clickable { if (isReadyToPost) handleSend() else triggerDeniedAnimation() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(modifier = Modifier.fillMaxSize().background(submitButtonProgressColor))
 
-                if (isEditing) {
-                    Icon(
-                        imageVector = Icons.Default.Cached,
-                        contentDescription = "Recast",
-                        tint = if (isReadyToPost) VoidBlack else Stone600,
-                        modifier = Modifier.size(32.dp).rotate(rotation.value)
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.ArrowUpward,
-                        contentDescription = "Release",
-                        tint = iconTint, // Smoothly darkens as background brightens
-                        modifier = Modifier
-                            .size(32.dp)
-                            .offset(y = iconSlideOffset.value.dp)
-                            .rotate(arrowRotation) // ✅ Premium 90-degree twist!
-                    )
+                    if (isEditing) {
+                        Icon(Icons.Default.Cached, contentDescription = "Recast", tint = if (isReadyToPost) VoidBlack else Stone600, modifier = Modifier.size(32.dp).rotate(rotation.value))
+                    } else {
+                        Icon(Icons.Default.ArrowUpward, contentDescription = "Release", tint = iconTint, modifier = Modifier.size(32.dp).offset(y = iconSlideOffset.value.dp).rotate(arrowRotation))
+                    }
                 }
             }
         }

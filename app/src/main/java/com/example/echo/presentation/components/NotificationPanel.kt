@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,36 +123,66 @@ fun NotificationItem(
     item: NotificationDto,
     onClick: () -> Unit
 ) {
+    val isSystemAlert = item.echoId == "SYSTEM"
+
     // --- ECHO-LIKE WINDOW BOX ---
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Stone900.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
-            .border(1.dp, Stone800.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .background(
+                color = if (isSystemAlert) Color.White.copy(alpha = 0.05f) else Stone900.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = if (isSystemAlert) Color(0xFF4ADE80).copy(alpha = 0.3f) else Stone800.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(enabled = !isSystemAlert, onClick = onClick) // Disable click for system alerts
             .padding(16.dp)
     ) {
-        // 1. Context (Original Echo)
-        val originalText = item.echo?.content ?: "Unknown Echo"
-
-        Text(
-            text = "REPLY: ${originalText.take(25).uppercase()}",
-            style = VoidTypography.labelSmall.copy(
-                fontSize = 9.sp,
-                color = Stone700,
-                letterSpacing = 1.sp
+        // 1. Header
+        if (isSystemAlert) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color(0xFF4ADE80),
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "SOUL ENERGY",
+                    style = VoidTypography.labelSmall.copy(
+                        fontSize = 9.sp,
+                        color = Color(0xFF4ADE80), // Terminal Green
+                        letterSpacing = 1.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        } else {
+            val originalText = item.echo?.content ?: "Unknown Echo"
+            Text(
+                text = "REPLY: ${originalText.take(25).uppercase()}",
+                style = VoidTypography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    color = Stone700,
+                    letterSpacing = 1.sp
+                )
             )
-        )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 2. The Reply Content
+        // 2. The Content
         Text(
             text = item.content,
             style = VoidTypography.bodyLarge.copy(
                 fontSize = 14.sp,
-                color = NeonWhite,
-                lineHeight = 20.sp
+                color = if (isSystemAlert) Color.White else NeonWhite,
+                lineHeight = 20.sp,
+                fontWeight = if (isSystemAlert) FontWeight.Medium else FontWeight.Normal
             ),
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
@@ -161,7 +192,7 @@ fun NotificationItem(
 
         // 3. Footer (Time)
         Text(
-            text = "NEW RESONANCE",
+            text = if (isSystemAlert) "MILESTONE REACHED" else "NEW RESONANCE",
             style = VoidTypography.labelSmall.copy(
                 fontSize = 8.sp,
                 color = Stone600

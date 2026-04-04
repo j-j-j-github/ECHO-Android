@@ -33,6 +33,59 @@ object SharedPreferencesManager {
         return id!!
     }
 
+    fun getLastNotificationTimestamp(context: Context): Long {
+        return getPrefs(context).getLong("last_notification_time", 0L)
+    }
+
+    fun setLastNotificationTimestamp(context: Context, time: Long) {
+        getPrefs(context).edit().putLong("last_notification_time", time).apply()
+    }
+
+    fun getPendingOfflineCredits(context: Context): Pair<Int, Int> {
+        val prefs = getPrefs(context)
+        val echoes = prefs.getInt("pending_offline_echoes", 0)
+        val replies = prefs.getInt("pending_offline_replies", 0)
+        return Pair(echoes, replies)
+    }
+
+    fun addPendingOfflineEcho(context: Context) {
+        val current = getPrefs(context).getInt("pending_offline_echoes", 0)
+        getPrefs(context).edit().putInt("pending_offline_echoes", current + 1).apply()
+    }
+
+    fun addPendingOfflineReply(context: Context) {
+        val current = getPrefs(context).getInt("pending_offline_replies", 0)
+        getPrefs(context).edit().putInt("pending_offline_replies", current + 1).apply()
+    }
+
+    fun clearPendingCredits(context: Context) {
+        getPrefs(context).edit()
+            .putInt("pending_offline_echoes", 0)
+            .putInt("pending_offline_replies", 0)
+            .apply()
+    }
+
+    // Add this function to check if they've seen the NEW onboarding
+    fun hasSeenOnboardingV2(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("echo_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("has_seen_onboarding_v2", false)
+        // Defaults to false, so ALL users will see it
+    }
+
+    // Add this function to save that they've seen it
+    fun markOnboardingV2Seen(context: Context) {
+        val prefs = context.getSharedPreferences("echo_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("has_seen_onboarding_v2", true).apply()
+    }
+
+    fun getLastLoginTimestamp(context: Context): Long {
+        return getPrefs(context).getLong("last_login_time", System.currentTimeMillis())
+    }
+
+    fun setLastLoginTimestamp(context: Context, time: Long) {
+        getPrefs(context).edit().putLong("last_login_time", time).apply()
+    }
+
     // --- NOTIFICATION TIMESTAMPS ---
     fun saveLastCheckedTime(context: Context, timestamp: String) {
         getPrefs(context).edit().putString(KEY_LAST_CHECKED_TIME, timestamp).apply()

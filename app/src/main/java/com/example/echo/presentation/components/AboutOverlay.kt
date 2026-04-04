@@ -181,7 +181,14 @@ fun AboutOverlay(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("REPLAY PROTOCOL", style = VoidTypography.labelSmall.copy(color = NeonWhite, fontSize = 10.sp, letterSpacing = 2.sp))
+                    Text(
+                        text = "GET STARTED",
+                        style = VoidTypography.labelSmall.copy(
+                            color = Color(0xFF10B981),
+                            fontSize = 10.sp,
+                            letterSpacing = 2.sp
+                        )
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))

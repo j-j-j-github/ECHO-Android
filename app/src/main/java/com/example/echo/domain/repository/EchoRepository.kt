@@ -37,6 +37,9 @@ interface EchoRepository {
     // --- NEW: JOURNEY & ANALYTICS ---
     suspend fun getUserStats(): UserStatsDto?
 
+    // Add to EchoRepository.kt and EchoRepositoryImpl.kt
+    suspend fun createEchoWithId(echoId: String, content: String, category: String, mood: Int, colorCode: String?)
+
     suspend fun submitLead(email: String, signatureId: String)
 
     suspend fun getMoodHistory(): List<MoodHistoryDto>
@@ -47,4 +50,11 @@ interface EchoRepository {
 
     suspend fun relateToEcho(echoId: String)
     suspend fun unrelateFromEcho(echoId: String)
+
+    suspend fun syncOfflineEnergy(signatureId: String, pendingEchoes: Int, pendingReplies: Int): Boolean
+
+    suspend fun awardDailyLoginEnergy(userId: String): Boolean
+
+    suspend fun processDailyLogin(signatureId: String)
+    suspend fun activateSpotlight(echoId: String, category: String): String
 }

@@ -11,8 +11,12 @@ data class EchoDto(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("signature_id") val signatureId: String? = null,
     @SerialName("color_code") val colorCode: String? = null,
-    val category: String? = null, // ✅ NEW: Category field
+    val category: String? = null,
     val mood: Int? = null,
     val replies: List<ReplyDto>? = null,
-    val likes: Int? = 0
+    val likes: Int? = 0,
+    @SerialName("is_related") val isRelated: Boolean? = false, // ✅ NEW: Tracks if the current user related to this
+    @SerialName("is_spotlight") val isSpotlight: Boolean? = false,
+    @SerialName("spotlight_status") val spotlightStatus: String? = "none",
+    @SerialName("spotlight_expires_at") val spotlightExpiresAt: String? = null
 )
