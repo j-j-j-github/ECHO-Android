@@ -17,6 +17,10 @@
   [![Refresh Rate](https://img.shields.io/badge/Display-120Hz%20Unlocked-00E5FF?style=for-the-badge)](#)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](LICENSE)
 
+  <br/><br/>
+
+  <img src="docs/images/1.png" alt="ECHO Showcase - Seek The Silence" width="480" style="border-radius: 18px; box-shadow: 0 12px 36px rgba(0,0,0,0.8);"/>
+
 </div>
 
 ---
@@ -25,7 +29,6 @@
 
 - [Vision & Philosophy](#-vision--philosophy)
 - [Visual Showcase](#-visual-showcase)
-  - [Where to Store Screenshots](#-where-to-store-screenshots)
 - [Core Features](#-core-features)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
 - [Project Structure](#-project-structure)
@@ -52,32 +55,28 @@ Modern social platforms are engineered for permanence, surveillance, and perform
 
 ## 📸 Visual Showcase
 
-> [!TIP]
-> **Screenshot Directory:** Store all preview images inside [`docs/images/`](docs/images/).
+### Mobile Experience & Highlights
 
-| **The Void Feed** | **Whisper Composer** | **Frequency Tuner** |
-| :---: | :---: | :---: |
-| <img src="docs/images/feed.png" alt="The Void Feed" width="240"/> | <img src="docs/images/whisper.png" alt="Whisper Composer" width="240"/> | <img src="docs/images/frequency.png" alt="Frequency Tuner" width="240"/> |
-| *Pitch-black 120Hz infinite stream* | *Minimalist thought broadcaster* | *Tactile haptic mood slider* |
+| **Anti-Social Manifesto** | **Frequency Dial** | **Themed Spaces** | **Live Feed & Broadcasts** |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/images/2.png" alt="Anti-Social Network" width="220"/> | <img src="docs/images/3.png" alt="Frequency Tuner" width="220"/> | <img src="docs/images/4.png" alt="Spaces" width="220"/> | <img src="docs/images/5.png" alt="Void Feed" width="220"/> |
+| *Protocol 48 Introduction* | *Tactile Mood Calibration* | *Curated Emotional Corners* | *48H Ephemeral Stream* |
 
-| **Soul Energy & Gyroscope** | **Spotlight Mode** | **Emotional Journey** |
-| :---: | :---: | :---: |
-| <img src="docs/images/soul_energy.png" alt="Soul Energy Sphere" width="240"/> | <img src="docs/images/spotlight.png" alt="Spotlight Post" width="240"/> | <img src="docs/images/journey.png" alt="Emotional Journey" width="240"/> |
-| *Real-time 3D gravity-particle sphere* | *Illuminated high-energy card* | *Mood heatmaps & telemetry* |
+<br/>
 
-### 📂 Where to Store Screenshots
+### Interface & Experience Walkthrough
 
-To display your screenshots in this README:
-1. Capture screenshots of the app from your device or emulator.
-2. Name the image files according to the table above:
-   - `docs/images/feed.png`
-   - `docs/images/whisper.png`
-   - `docs/images/frequency.png`
-   - `docs/images/soul_energy.png`
-   - `docs/images/spotlight.png`
-   - `docs/images/journey.png`
-   - `docs/images/notifications.png`
-3. Place them directly in the `docs/images/` directory in the repository root.
+<div align="center">
+
+| Feature | Preview |
+|---|---|
+| **Protocol 48 Onboarding**<br/>*True anonymity. No tracking. Pure thoughts.* | <img src="docs/images/6.png" alt="Protocol 48" width="520"/> |
+| **Speak. Be Heard. Disappear.**<br/>*48-hour auto-decay countdown timers.* | <img src="docs/images/7.png" alt="Speak Be Heard" width="520"/> |
+| **Whisper Composer**<br/>*Say anything. Leave behind nothing.* | <img src="docs/images/8.png" alt="Whisper Composer" width="520"/> |
+| **Anonymous Resonances**<br/>*Connect thoughts, not faces.* | <img src="docs/images/9.png" alt="Resonances" width="520"/> |
+| **The Void Everywhere**<br/>*Seamless across mobile and web.* | <img src="docs/images/10.png" alt="Web and Mobile" width="520"/> |
+
+</div>
 
 ---
 
@@ -380,3 +379,4 @@ Designed and engineered with care by **J3 Labs**.
 <div align="center">
   <sub>Everything you leave behind belongs to the Void.</sub>
 </div>
+

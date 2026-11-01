@@ -7,3 +7,4 @@ sdk.dir=/path/to/your/Android/sdk
 # Supabase Project Credentials
 SUPABASE_URL="https://your-project.supabase.co"
 SUPABASE_KEY="your-supabase-anon-key"
+
