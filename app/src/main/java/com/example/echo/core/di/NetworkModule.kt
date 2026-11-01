@@ -1,5 +1,6 @@
 package com.example.echo.core.di
 
+import com.example.echo.BuildConfig
 import com.example.echo.core.utils.UserPreferences // Import the helper
 import dagger.Module
 import dagger.Provides
@@ -20,8 +21,8 @@ object NetworkModule {
     @Singleton
     fun provideSupabaseClient(): SupabaseClient {
         return createSupabaseClient(
-            supabaseUrl = "https://vvdzbnxhqdojeyrvhtvf.supabase.co",
-            supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZHpibnhocWRvamV5cnZodHZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5OTUzOTAsImV4cCI6MjA4MjU3MTM5MH0.W7TF-LpCUSEmruhtGDlK9jOXermYTAJeFIVcwpWp3s8"
+            supabaseUrl = BuildConfig.SUPABASE_URL,
+            supabaseKey = BuildConfig.SUPABASE_KEY
         ) {
             install(Postgrest)
             install(Realtime)

@@ -1,0 +1,9 @@
+## This file is an example of local.properties for ECHO.
+## Copy this file to 'local.properties' and fill in your values.
+
+# Location of your Android SDK
+sdk.dir=/path/to/your/Android/sdk
+
+# Supabase Project Credentials
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_KEY="your-supabase-anon-key"

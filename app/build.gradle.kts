@@ -22,6 +22,16 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        val properties = java.util.Properties()
+        val localPropertiesFile = project.rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(localPropertiesFile.inputStream())
+        }
+        val supabaseUrl = properties.getProperty("SUPABASE_URL") ?: "\"\""
+        val supabaseKey = properties.getProperty("SUPABASE_KEY") ?: "\"\""
+        buildConfigField("String", "SUPABASE_URL", supabaseUrl)
+        buildConfigField("String", "SUPABASE_KEY", supabaseKey)
     }
 
     buildTypes {
